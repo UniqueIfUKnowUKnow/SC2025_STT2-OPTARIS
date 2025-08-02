@@ -1,1 +1,59 @@
+import RPi.GPIO as GPIO
+import time
+
+# Configure GPIO pin for PWM output to servo
+SERVO_PIN = 18  # Use the GPIO pin connected to servo signal wire
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(SERVO_PIN, GPIO.OUT)
+
+# Set up PWM on SERVO_PIN at 50Hz (standard for servos)
+pwm = GPIO.PWM(SERVO_PIN, 50)  # 50Hz
+
+# Start PWM with 0 duty cycle (servo idle)
+pwm.start(0)
+
+def set_angle(angle):
+    """
+    Move servo to specified angle (0 to 180 degrees).
+    MG90S typically expects:
+      - 1ms pulse ~ 0 degree 
+      - 2ms pulse ~ 180 degree
+    At 50Hz, period = 20ms --> 
+    Duty cycle (%) = (pulse_width_ms / period_ms) * 100
+    
+    So:
+    - 1 ms pulse = 5% duty cycle
+    - 2 ms pulse = 10% duty cycle
+    This function maps angle linearly between 5% and 10%.
+    """
+    if angle < 0:
+        angle = 0
+    elif angle > 180:
+        angle = 180
+    duty = 5 + (angle / 180) * 5  # Linear mapping 0-180 deg to 5-10% duty cycle
+    pwm.ChangeDutyCycle(duty)
+
+try:
+    print("Servo calibration started.")
+    # Sweep servo from 0 to 180 degrees slowly
+    while True:
+        # Move from 0 to 180 degrees
+        for angle in range(0, 181, 5):
+            set_angle(angle)
+            print(f"Moving to {angle}°")
+            time.sleep(0.5)  # Wait to let servo move
+
+        # Move back from 180 to 0 degrees
+        for angle in range(180, -1, -5):
+            set_angle(angle)
+            print(f"Moving to {angle}°")
+            time.sleep(0.5)
+
+except KeyboardInterrupt:
+    print("\nCalibration stopped by user")
+
+finally:
+    pwm.stop()
+    GPIO.cleanup()
+    print("GPIO cleaned up, program ended.")
 
