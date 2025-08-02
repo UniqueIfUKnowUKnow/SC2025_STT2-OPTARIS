@@ -1,1 +1,267 @@
+import time
+import math
+import numpy as np
+from sgp4.api import Satrec, jday
+import datetime
+
+# --- Hardware abstractions (replace with your hardware interfaces) ---
+
+class Servo:
+    def __init__(self):
+        self.angle = 0.0
+    def move_to(self, angle_deg):
+        self.angle = max(min(angle_deg, 90), -90)
+        print(f"[Servo] Moving to elevation {self.angle:.1f}°")
+        time.sleep(0.05)
+
+class Stepper:
+    def __init__(self):
+        self.angle = 0.0
+    def move_to(self, angle_deg):
+        self.angle = max(min(angle_deg, 180), 0)  # Assume 0-180 range for stepper pan
+        print(f"[Stepper] Moving to azimuth {self.angle:.1f}°")
+        time.sleep(0.1)
+
+class Lidar:
+    def __init__(self):
+        pass
+    def get_distance(self):
+        # Simulated measurement: 6.0m with noise or None 10% of time
+        import random
+        if random.random() < 0.1:
+            return None
+        return 6.0 + (random.random()-0.5)*0.3  # 6m +/- 0.15m noise
+
+# --- Kalman Filter for position (3D) only ---
+
+class KalmanFilter3D:
+    def __init__(self):
+        self.x = np.zeros(3)  # state: position x,y,z
+        self.P = np.eye(3) * 1.0  # covariance matrix
+        self.R = np.eye(3) * 0.5  # measurement noise covariance
+        self.Q = np.eye(3) * 0.01  # process noise covariance
+
+    def predict(self, pred_pos):
+        # Use TLE predicted position as the prediction step
+        self.x = pred_pos
+        self.P = self.P + self.Q
+
+    def update(self, meas_pos):
+        if meas_pos is None:
+            return
+        y = meas_pos - self.x  # innovation
+        S = self.P + self.R    # innovation covariance
+        K = self.P @ np.linalg.inv(S)  # Kalman gain
+        self.x = self.x + K @ y
+        I = np.eye(3)
+        self.P = (I - K) @ self.P
+
+# --- Coordinate transforms ---
+
+def eci_to_enu(eci_pos, gs_lat, gs_lon, gs_alt, gst):
+    """
+    Convert ECI coordinates (km) to local ENU (East, North, Up) coordinates in meters
+    relative to the ground station.
+    Approximate method ignoring Earth rotation during short intervals.
+    gst: Greenwich Sidereal Time in radians (required for ECI->ECEF)
+    """
+    # Convert ground station lat/lon to radians
+    lat = np.radians(gs_lat)
+    lon = np.radians(gs_lon)
+
+    # Earth radius and flattening (WGS84)
+    a = 6378.137  # km
+    f = 1 / 298.257223563
+    e2 = f * (2 - f)
+
+    # Compute ground station ECEF coordinates
+    N = a / np.sqrt(1 - e2 * np.sin(lat)**2)
+    x_gs = (N + gs_alt/1000) * np.cos(lat) * np.cos(lon)
+    y_gs = (N + gs_alt/1000) * np.cos(lat) * np.sin(lon)
+    z_gs = (N * (1 - e2) + gs_alt/1000) * np.sin(lat)
+
+    # Convert ECI to ECEF (approximate rotation around Z by gst)
+    cos_gst = np.cos(gst)
+    sin_gst = np.sin(gst)
+    x_ecef = cos_gst * eci_pos[0] + sin_gst * eci_pos[1]
+    y_ecef = -sin_gst * eci_pos[0] + cos_gst * eci_pos[1]
+    z_ecef = eci_pos[2]
+
+    # Vector from GS to satellite in ECEF
+    dx = x_ecef - x_gs
+    dy = y_ecef - y_gs
+    dz = z_ecef - z_gs
+
+    # Rotation ECEF to ENU
+    sin_lat = np.sin(lat)
+    cos_lat = np.cos(lat)
+    sin_lon = np.sin(lon)
+    cos_lon = np.cos(lon)
+
+    t = np.array([
+        [-sin_lon,           cos_lon,            0],
+        [-sin_lat*cos_lon,  -sin_lat*sin_lon,    cos_lat],
+        [ cos_lat*cos_lon,   cos_lat*sin_lon,    sin_lat]
+    ])
+
+    enu = t @ np.array([dx, dy, dz])
+
+    # Convert km to meters
+    return enu * 1000
+
+def enu_to_az_el(enu):
+    east, north, up = enu
+    horiz_dist = np.sqrt(east**2 + north**2)
+    azimuth = np.degrees(np.arctan2(east, north)) % 360  # degrees, 0=north, clockwise
+    elevation = np.degrees(np.arctan2(up, horiz_dist))
+    return azimuth, elevation
+
+def spherical_to_cartesian(az_deg, el_deg, distance_m):
+    az = np.radians(az_deg)
+    el = np.radians(el_deg)
+    x = distance_m * np.cos(el) * np.sin(az)
+    y = distance_m * np.cos(el) * np.cos(az)
+    z = distance_m * np.sin(el)
+    return np.array([x, y, z])
+
+# --- TLE Propagation ---
+
+class TLEPropagator:
+    def __init__(self, line1, line2):
+        self.sat = Satrec.twoline2rv(line1, line2)
+
+    def propagate(self, dt_seconds=0):
+        # Propagate to current UTC + dt_seconds
+        t = datetime.datetime.utcnow() + datetime.timedelta(seconds=dt_seconds)
+        jd, fr = jday(t.year, t.month, t.day, t.hour, t.minute, t.second + t.microsecond*1e-6)
+        e, r, v = self.sat.sgp4(jd, fr)
+        if e != 0:
+            raise RuntimeError(f"SGP4 propagation error {e}")
+        return np.array(r)  # km ECI position
+
+# --- Active Seek System ---
+
+class ActiveSeekTracker:
+    def __init__(self, servo, stepper, lidar, tle_prop, gs_lat, gs_lon, gs_alt):
+        self.servo = servo
+        self.stepper = stepper
+        self.lidar = lidar
+        self.tle = tle_prop
+        self.gs_lat = gs_lat
+        self.gs_lon = gs_lon
+        self.gs_alt = gs_alt
+
+        self.kf = KalmanFilter3D()
+        self.tracking = False
+        self.scan_offsets = np.linspace(-3,3,7)  # degrees zig-zag scan offsets
+        self.last_az = 0
+        self.last_el = 0
+
+    def scan_and_detect(self, center_az, center_el):
+        print(f"[Scan] Around az={center_az:.2f}°, el={center_el:.2f}°")
+        for da in self.scan_offsets:
+            for de in self.scan_offsets:
+                az = center_az + da
+                el = center_el + de
+                az = az % 360
+                if el < -10 or el > 85:
+                    continue  # Limit elevation scanning range
+
+                self.stepper.move_to(az)
+                self.servo.move_to(el)
+                time.sleep(0.15)  # allow settling
+
+                dist = self.lidar.get_distance()
+                print(f"Measured dist at az={az:.2f}°, el={el:.2f}° -> {dist}")
+
+                if dist is not None and 0.5 < dist < 12.0:
+                    # Convert range + angles to Cartesian ENU coordinate
+                    meas_pos_enu = spherical_to_cartesian(az, el, dist)
+                    self.kf.x = meas_pos_enu
+                    self.kf.P = np.eye(3)*0.5
+                    self.tracking = True
+                    self.last_az = az
+                    self.last_el = el
+                    print("[Detection] Target found!")
+                    return True
+        print("[Detection] Target NOT found.")
+        self.tracking = False
+        return False
+
+    def run(self):
+        print("Starting Active Seek Tracker")
+        while True:
+            # 1. Predict position from TLE
+            eci_pos = self.tle.propagate()
+            enu_pos = eci_to_enu(eci_pos, self.gs_lat, self.gs_lon, self.gs_alt, gst=self._get_gst())
+
+            # 2. Convert to azimuth and elevation to point motors
+            pred_az, pred_el = enu_to_az_el(enu_pos)
+            print(f"[Predict] Predicted az={pred_az:.2f}°, el={pred_el:.2f}°")
+
+            if not self.tracking:
+                found = self.scan_and_detect(pred_az, pred_el)
+                if not found:
+                    print("Delay before next scan...")
+                    time.sleep(1.0)
+                    continue
+
+            # 3. Tracking mode: point at predicted position + filter update
+            self.kf.predict(enu_pos)
+
+            # Move motors using filtered position
+            filt_x, filt_y, filt_z = self.kf.x
+            filt_az, filt_el = enu_to_az_el(np.array([filt_x, filt_y, filt_z]))
+            self.stepper.move_to(filt_az)
+            self.servo.move_to(filt_el)
+            time.sleep(0.1)
+
+            dist = self.lidar.get_distance()
+            print(f"[Tracking] Distance measurement at az={filt_az:.2f}, el={filt_el:.2f}: {dist}")
+
+            if dist is not None and 0.5 < dist < 12.0:
+                meas_pos = spherical_to_cartesian(filt_az, filt_el, dist)
+                self.kf.update(meas_pos)
+                self.last_az = filt_az
+                self.last_el = filt_el
+            else:
+                print("[Warning] Measurement lost, switching to scan mode.")
+                self.tracking = False
+                time.sleep(0.5)
+
+    def _get_gst(self):
+        """
+        Calculate Greenwich Sidereal Time in radians for approximate ECI->ECEF conversion.
+        This is an approximate calculation; for precise work use astropy or similar.
+        """
+        now = datetime.datetime.utcnow()
+        jd = 367 * now.year - int((7*(now.year + int((now.month+9)/12)))/4) + int((275*now.month)/9) + now.day + 1721013.5 + \
+            (now.hour + now.minute/60 + now.second/3600)/24
+        T = (jd - 2451545.0) / 36525
+        gst = 280.46061837 + 360.98564736629 * (jd - 2451545) + 0.000387933 * (T**2) - (T**3)/38710000
+        gst = math.radians(gst % 360)
+        return gst
+
+# --- Usage Example with dummy hardware ---
+
+if __name__ == "__main__":
+    # Replace these TLE lines with your actual drone/satellite TLE
+    line1 = "1 25544U 98067A   20300.83097691  .00001534  00000-0  35580-4 0  9996"
+    line2 = "2 25544  51.6453  57.0843 0001671  64.9808  73.0513 15.49338189252428"
+
+    servo = Servo()
+    stepper = Stepper()
+    lidar = Lidar()
+    tle_prop = TLEPropagator(line1, line2)
+
+    # Ground station lat, lon, altitude (meters)
+    gs_lat = 40.0      # Example latitude
+    gs_lon = -74.0     # Example longitude
+    gs_alt = 10        # Altitude meters
+
+    tracker = ActiveSeekTracker(servo, stepper, lidar, tle_prop, gs_lat, gs_lon, gs_alt)
+    try:
+        tracker.run()
+    except KeyboardInterrupt:
+        print("Tracker stopped by user.")
 
