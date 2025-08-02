@@ -1,1 +1,231 @@
+import sys
+import numpy as np
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                             QLineEdit, QPushButton, QListWidget, QMessageBox, QGroupBox)
+from PyQt6.QtGui import QColor
+import pyqtgraph.opengl as gl
+from pyqtgraph.Qt import QtCore
 
+class SatelliteTracker3D(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Dynamic Satellite Tracker 3D")
+        self.setGeometry(100, 100, 1000, 700)
+
+        self.points = []  # Store points as np.array([x,y,z])
+        self.predicted_points = []
+
+        self.init_ui()
+        self.init_gl()
+    
+    def init_ui(self):
+        # Main layout with control panel on left and 3D view on right
+        main_layout = QHBoxLayout(self)
+        
+        # Left panel with controls
+        control_panel = QVBoxLayout()
+        control_group = QGroupBox("Satellite Tracker Controls")
+        control_g_layout = QVBoxLayout()
+        
+        # Input group box
+        input_group = QGroupBox("Add New Point")
+        input_layout = QVBoxLayout()
+        self.input_x = QLineEdit()
+        self.input_y = QLineEdit()
+        self.input_z = QLineEdit()
+        input_layout.addWidget(QLabel("X Coordinate:"))
+        input_layout.addWidget(self.input_x)
+        input_layout.addWidget(QLabel("Y Coordinate:"))
+        input_layout.addWidget(self.input_y)
+        input_layout.addWidget(QLabel("Z Coordinate:"))
+        input_layout.addWidget(self.input_z)
+        btn_add = QPushButton("Add Point")
+        btn_add.clicked.connect(self.on_add_point)
+        input_layout.addWidget(btn_add)
+        input_group.setLayout(input_layout)
+        
+        # Control buttons group
+        button_group = QGroupBox("Controls")
+        button_layout = QVBoxLayout()
+        self.btn_show_trajectory = QPushButton("Show Trajectory")
+        self.btn_show_trajectory.clicked.connect(self.on_show_trajectory)
+        self.btn_predict = QPushButton("Predict Path")
+        self.btn_predict.clicked.connect(self.on_predict_path)
+        self.btn_clear = QPushButton("Clear All")
+        self.btn_clear.setStyleSheet("background-color: LightCoral")
+        self.btn_clear.clicked.connect(self.on_clear_all)
+        button_layout.addWidget(self.btn_show_trajectory)
+        button_layout.addWidget(self.btn_predict)
+        button_layout.addWidget(self.btn_clear)
+        button_group.setLayout(button_layout)
+        
+        # Points list group box
+        list_group = QGroupBox("Tracked Points")
+        list_layout = QVBoxLayout()
+        self.list_points = QListWidget()
+        list_layout.addWidget(self.list_points)
+        list_group.setLayout(list_layout)
+
+        control_g_layout.addWidget(input_group)
+        control_g_layout.addWidget(button_group)
+        control_g_layout.addWidget(list_group)
+        control_group.setLayout(control_g_layout)
+        control_panel.addWidget(control_group)
+        
+        # Add control panel layout to main
+        main_layout.addLayout(control_panel, 0)
+        
+        # 3D view widget on right side
+        self.gl_view = gl.GLViewWidget()
+        self.gl_view.opts['distance'] = 40
+        main_layout.addWidget(self.gl_view, 1)
+
+        self.setLayout(main_layout)
+    
+    def init_gl(self):
+        # Clear view and set up grid and axis arrows
+        self.gl_view.clear()
+        
+        # Add grid
+        grid = gl.GLGridItem()
+        grid.setSize(20, 20)
+        grid.setSpacing(1, 1)
+        grid.translate(0, 0, 0)
+        self.gl_view.addItem(grid)
+
+        # Add coordinate axes arrows (X=red, Y=green, Z=blue)
+        arrow_length = 10
+        
+        self.arrow_x = self.create_arrow(np.array([0,0,0]), np.array([arrow_length,0,0]), QColor(255,0,0))
+        self.arrow_y = self.create_arrow(np.array([0,0,0]), np.array([0,arrow_length,0]), QColor(0,255,0))
+        self.arrow_z = self.create_arrow(np.array([0,0,0]), np.array([0,0,arrow_length]), QColor(0,0,255))
+        
+        self.gl_view.addItem(self.arrow_x)
+        self.gl_view.addItem(self.arrow_y)
+        self.gl_view.addItem(self.arrow_z)
+
+        # Store 3D graphic items
+        self.point_items = []
+        self.line_items = []
+        self.text_items = []
+        self.predicted_point_items = []
+        self.predicted_line_items = []
+
+    def create_arrow(self, start, end, color):
+        # Arrow as GLLinePlotItem can be made using line + small cone for arrowhead
+        pts = np.vstack([start, end])
+        arrow = gl.GLLinePlotItem(pos=pts, color=color, width=3, antialias=True)
+        return arrow
+
+    def add_sphere(self, pos, color=QColor(0,255,0), radius=0.3):
+        md = gl.MeshData.sphere(rows=10, cols=10, radius=radius)
+        m = gl.GLMeshItem(meshdata=md, smooth=True, color=color, shader='shaded', glOptions='opaque')
+        m.translate(*pos)
+        self.gl_view.addItem(m)
+        return m
+
+    def add_text(self, pos, text, color=QColor(0,0,0)):
+        # PyQtGraph 3D has no native text, workaround: 2D overlay or skip for now
+        # For demo, just skip or add placeholder
+        # Later consider QPainter overlays or external libraries
+        pass
+
+    def on_add_point(self):
+        try:
+            x = float(self.input_x.text())
+            y = float(self.input_y.text())
+            z = float(self.input_z.text())
+            new_point = np.array([x,y,z])
+            self.points.append(new_point)
+            self.list_points.addItem(f"Point {len(self.points)}: ({x:.2f}, {y:.2f}, {z:.2f})")
+
+            # add sphere visualization
+            sphere = self.add_sphere(new_point, QColor(0, 255, 0))
+            self.point_items.append(sphere)
+
+            # clear inputs
+            self.input_x.clear()
+            self.input_y.clear()
+            self.input_z.clear()
+
+        except ValueError:
+            QMessageBox.warning(self, "Input Error", "Please enter valid numeric coordinates.")
+    
+    def on_clear_all(self):
+        self.points.clear()
+        self.predicted_points.clear()
+        self.list_points.clear()
+        for item in self.point_items + self.line_items + self.text_items + self.predicted_point_items + self.predicted_line_items:
+            self.gl_view.removeItem(item)
+        self.point_items.clear()
+        self.line_items.clear()
+        self.text_items.clear()
+        self.predicted_point_items.clear()
+        self.predicted_line_items.clear()
+        # Re-add axes and grid since gl_view.clear() clears everything
+        self.init_gl()
+
+    def on_show_trajectory(self):
+        # Remove old lines
+        for line in self.line_items:
+            self.gl_view.removeItem(line)
+        self.line_items.clear()
+
+        # Draw lines connecting points
+        if len(self.points) < 2:
+            QMessageBox.information(self, "Info", "Add at least 2 points to show trajectory.")
+            return
+
+        for i in range(len(self.points)-1):
+            pts = np.vstack([self.points[i], self.points[i+1]])
+            line = gl.GLLinePlotItem(pos=pts, color=(0,0,1,1), width=2, antialias=True)
+            self.gl_view.addItem(line)
+            self.line_items.append(line)
+
+    def on_predict_path(self):
+        # Predict next 10 points using quadratic fit on last 3 points
+        if len(self.points) < 3:
+            QMessageBox.information(self, "Info", "Need at least 3 points for trajectory prediction.")
+            return
+
+        # Remove old predicted points and lines
+        for p in self.predicted_point_items + self.predicted_line_items:
+            self.gl_view.removeItem(p)
+        self.predicted_point_items.clear()
+        self.predicted_line_items.clear()
+
+        # Use last 3 points and perform quadratic fit in each dimension over t=[0,1,2]
+        last_pts = np.array(self.points[-3:])
+        t = np.array([0, 1, 2])
+
+        coeffs_x = np.polyfit(t, last_pts[:,0], 2)
+        coeffs_y = np.polyfit(t, last_pts[:,1], 2)
+        coeffs_z = np.polyfit(t, last_pts[:,2], 2)
+
+        # Predict points at t=3...12
+        prev = last_pts[-1]
+        predicted_pts = []
+        for ti in range(3, 13):
+            x = np.polyval(coeffs_x, ti)
+            y = np.polyval(coeffs_y, ti)
+            z = np.polyval(coeffs_z, ti)
+            pred = np.array([x,y,z])
+            predicted_pts.append(pred)
+            sphere = self.add_sphere(pred, QColor(135,206,250), 0.2)  # light blue smaller points
+            self.predicted_point_items.append(sphere)
+
+            # draw line from previous point to current predicted
+            line_pts = np.vstack([prev, pred])
+            line = gl.GLLinePlotItem(pos=line_pts, color=(0.53, 0.81, 0.92, 1), width=2, antialias=True)  # light blue line
+            self.gl_view.addItem(line)
+            self.predicted_line_items.append(line)
+
+            prev = pred
+
+        self.predicted_points = predicted_pts
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = SatelliteTracker3D()
+    window.show()
+    sys.exit(app.exec())
