@@ -1,1 +1,137 @@
+import time
+import numpy as np
+import serial
+import RPi.GPIO as GPIO
+import pigpio
+
+# --- GPIO pins for DRV8825 stepper driver ---
+DIR = 20
+STEP = 21
+ENABLE = 16
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(DIR, GPIO.OUT)
+GPIO.setup(STEP, GPIO.OUT)
+GPIO.setup(ENABLE, GPIO.OUT)
+GPIO.output(ENABLE, GPIO.LOW)  # Enable the stepper driver
+
+# --- Servo motor setup ---
+SERVO_PIN = 18
+pi = pigpio.pi()
+if not pi.connected:
+    exit("Failed to connect to pigpio daemon")
+
+def set_servo_angle(angle):
+    pulsewidth = int(500 + (angle / 180.0) * 2000)  # 500-2500us pulse width for 0-180 degrees
+    pi.set_servo_pulsewidth(SERVO_PIN, pulsewidth)
+
+# --- TFmini-S LiDAR setup ---
+ser = serial.Serial('/dev/serial0', 115200, timeout=0.1)
+
+def read_tfm():
+    while ser.in_waiting >= 9:
+        data = ser.read(9)
+        if data[0] == 0x59 and data[1] == 0x59:
+            dist = data[2] + data[3]*256
+            return dist / 1000.0  # Convert mm to meters
+    return None
+
+# --- ActiveSeek detection ---
+class ActiveSeek:
+    def __init__(self, min_dist=1.0, max_dist=10.0):
+        self.min_dist = min_dist
+        self.max_dist = max_dist
+        self.found = False
+        self.current_angle = 90
+
+    def detect(self, scan_data):
+        for angle, dist in scan_data:
+            if dist is not None and self.min_dist <= dist <= self.max_dist:
+                self.current_angle = angle
+                self.found = True
+                return True, angle, dist
+        self.found = False
+        return False, None, None
+
+# --- Kalman filter for angular tracking ---
+class KalmanTracker:
+    def __init__(self):
+        self.x = np.array([[0], [0]])  # state: angle and angular velocity
+        self.P = np.eye(2)
+        self.F = np.array([[1, 0.1], [0, 1]])  # Transition matrix (dt=0.1s)
+        self.H = np.array([[1, 0]])             # Measurement matrix
+        self.R = np.array([[0.1]])              # Measurement noise covariance
+        self.Q = np.array([[0.01, 0], [0, 0.01]])  # Process noise covariance
+
+    def predict(self):
+        self.x = self.F @ self.x
+        self.P = self.F @ self.P @ self.F.T + self.Q
+        return self.x[0, 0]
+
+    def update(self, measurement):
+        y = measurement - (self.H @ self.x)[0]
+        S = self.H @ self.P @ self.H.T + self.R
+        K = self.P @ self.H.T / S
+        self.x = self.x + K * y
+        self.P = (np.eye(2) - K @ self.H) @ self.P
+
+# --- Stepper motor movement (using 1/32 microstepping) ---
+def stepper_move_to(angle):
+    steps_per_rev = 200 * 32  # 6400 microsteps per revolution
+    target_steps = int((angle / 360.0) * steps_per_rev)
+    direction = GPIO.HIGH if target_steps >= 0 else GPIO.LOW
+    GPIO.output(DIR, direction)
+    steps = abs(target_steps)
+    for _ in range(steps):
+        GPIO.output(STEP, GPIO.HIGH)
+        time.sleep(0.0005)  # Adjust for speed, torque
+        GPIO.output(STEP, GPIO.LOW)
+        time.sleep(0.0005)
+
+def servo_move_to(angle):
+    set_servo_angle(angle)
+
+# --- Scanning using servo and LiDAR ---
+def scan_environment():
+    scan_data = []
+    for angle in range(0, 181, 1):
+        servo_move_to(angle)
+        time.sleep(0.1)
+        dist = read_tfm()
+        scan_data.append((angle, dist))
+    return scan_data
+
+# --- Cleanup ---
+def cleanup():
+    print("Cleaning up GPIO and servo...")
+    pi.set_servo_pulsewidth(SERVO_PIN, 0)
+    GPIO.output(ENABLE, GPIO.HIGH)  # Disable the stepper driver
+    GPIO.cleanup()
+    pi.stop()
+    ser.close()
+
+# --- Main control loop ---
+def main():
+    active_seek = ActiveSeek()
+    kalman = KalmanTracker()
+    print("Starting tracking system...")
+    try:
+        while True:
+            scan_data = scan_environment()
+            detected, detected_angle, detected_dist = active_seek.detect(scan_data)
+            if detected:
+                print(f"Detected target at {detected_angle}°, distance {detected_dist:.2f} m")
+                kalman.update(detected_angle)
+            else:
+                print("Target lost, using prediction...")
+            predicted_angle = kalman.predict()
+            predicted_angle = max(0, min(180, predicted_angle))  # clamp
+            print(f"Moving to predicted angle {predicted_angle:.1f}°")
+            servo_move_to(predicted_angle)
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        cleanup()
+
+if __name__ == "__main__":
+    main()
 
