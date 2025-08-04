@@ -1,1 +1,150 @@
+import sys
+import math
+import numpy as np
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox
+from PyQt6.QtGui import QColor
+import pyqtgraph.opengl as gl
+from pyqtgraph.Qt import QtCore
+
+class OrbitTracker3D(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Real-Time Orbit and Drone Tracking")
+        self.resize(1000, 700)
+
+        self.predicted_positions = []  # List of np.array([x,y,z]) predicted positions
+        self.measured_positions = []   # Measured points (LiDAR detections)
+
+        # Generate orbit points BEFORE initializing GL
+        self.orbit_points = self.generate_orbit_ellipse(semi_major=20, semi_minor=10, num_points=360)
+
+        self.init_ui()
+        self.init_gl()
+
+        # For demo: simulate moving index along orbit points
+        self.sim_time_idx = 0
+
+        # Timer for periodic scene update at 10 Hz
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update_scene)
+        self.timer.start(100)
+
+    def init_ui(self):
+        main_layout = QHBoxLayout(self)
+
+        # Control panel on the left
+        control_panel = QVBoxLayout()
+
+        info_box = QGroupBox("Tracking Info")
+        info_layout = QVBoxLayout()
+
+        self.status_label = QLabel("Status: Initializing")
+        info_layout.addWidget(self.status_label)
+        self.pred_label = QLabel("Predicted Pos: N/A")
+        info_layout.addWidget(self.pred_label)
+        self.meas_label = QLabel("Measured Pos: N/A")
+        info_layout.addWidget(self.meas_label)
+
+        info_box.setLayout(info_layout)
+        control_panel.addWidget(info_box)
+
+        # Button to clear measured path
+        btn_clear = QPushButton("Clear Measured Path")
+        btn_clear.clicked.connect(self.clear_measured_path)
+        control_panel.addWidget(btn_clear)
+
+        main_layout.addLayout(control_panel, 1)
+
+        # 3D OpenGL View on right
+        self.gl_view = gl.GLViewWidget()
+        self.gl_view.opts['distance'] = 60
+        self.gl_view.setCameraPosition(elevation=30, azimuth=45)
+        main_layout.addWidget(self.gl_view, 4)
+
+        self.setLayout(main_layout)
+
+    def init_gl(self):
+        self.gl_view.clear()
+
+        # Add grid
+        grid = gl.GLGridItem()
+        grid.setSize(40, 40)
+        grid.setSpacing(2, 2)
+        self.gl_view.addItem(grid)
+
+        # Add axes arrows
+        arrow_len = 15
+        self.arrow_x = self.create_arrow(np.array([0, 0, 0]), np.array([arrow_len, 0, 0]), QColor(255, 0, 0))  # X red
+        self.arrow_y = self.create_arrow(np.array([0, 0, 0]), np.array([0, arrow_len, 0]), QColor(0, 255, 0))  # Y green
+        self.arrow_z = self.create_arrow(np.array([0, 0, 0]), np.array([0, 0, arrow_len]), QColor(0, 0, 255))  # Z blue
+
+        self.gl_view.addItem(self.arrow_x)
+        self.gl_view.addItem(self.arrow_y)
+        self.gl_view.addItem(self.arrow_z)
+
+        # Orbit path line (static)
+        self.orbit_line = gl.GLLinePlotItem(pos=self.orbit_points, color=(0.5, 0.5, 1, 1), width=2, antialias=True)
+        self.gl_view.addItem(self.orbit_line)
+
+        # Markers for predicted and measured positions
+        self.marker_pred = gl.GLScatterPlotItem(size=15, color=(1, 0.5, 0, 1))  # Orange for predicted
+        self.marker_meas = gl.GLScatterPlotItem(size=10, color=(1, 0, 0, 1))   # Red for measured
+        self.gl_view.addItem(self.marker_pred)
+        self.gl_view.addItem(self.marker_meas)
+
+        # Line showing measured path history
+        self.measured_path_line = gl.GLLinePlotItem(color=(1, 0, 0, 0.6), width=2, antialias=True)
+        self.gl_view.addItem(self.measured_path_line)
+
+    def create_arrow(self, start, end, color):
+        pts = np.vstack([start, end])
+        arrow = gl.GLLinePlotItem(pos=pts, color=color, width=3, antialias=True)
+        return arrow
+
+    def generate_orbit_ellipse(self, semi_major, semi_minor, num_points):
+        t = np.linspace(0, 2 * np.pi, num_points)
+        x = semi_major * np.cos(t)
+        y = semi_minor * np.sin(t)
+        z = np.zeros_like(t)
+        pts = np.column_stack((x, y, z))
+        return pts.astype(float)
+
+    def update_scene(self):
+        # Simulation: cycle through orbit points for predicted position
+        if self.sim_time_idx >= len(self.orbit_points):
+            self.sim_time_idx = 0
+            self.measured_positions.clear()
+
+        pred_pos = self.orbit_points[self.sim_time_idx]
+        self.sim_time_idx += 1
+
+        self.status_label.setText("Status: Tracking")
+        self.pred_label.setText(f"Predicted Pos: {pred_pos[0]:.2f}, {pred_pos[1]:.2f}, {pred_pos[2]:.2f}")
+
+        # Simulate measured position with noise
+        noise = np.random.normal(0, 0.5, size=3)
+        meas_pos = pred_pos + noise
+        self.measured_positions.append(meas_pos)
+        self.meas_label.setText(f"Measured Pos: {meas_pos[0]:.2f}, {meas_pos[1]:.2f}, {meas_pos[2]:.2f}")
+
+        # Update predicted marker
+        self.marker_pred.setData(pos=np.array([pred_pos]))
+        # Update measured markers
+        measured_array = np.array(self.measured_positions)
+        self.marker_meas.setData(pos=measured_array)
+
+        # Update measured path line
+        if len(measured_array) > 1:
+            self.measured_path_line.setData(pos=measured_array)
+
+    def clear_measured_path(self):
+        self.measured_positions.clear()
+        self.marker_meas.setData(pos=np.empty((0, 3)))
+        self.meas_label.setText("Measured Pos: N/A")
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = OrbitTracker3D()
+    window.show()
+    sys.exit(app.exec())
 
