@@ -1,1 +1,356 @@
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <thread>
+#include <cmath>
+#include <algorithm>
+#include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <pigpio.h>
+#include <wiringPi.h>
 
+// GPIO pins for DRV8825 stepper driver
+const int DIR = 20;
+const int STEP = 21;
+const int ENABLE = 16;
+
+// Servo motor setup
+const int SERVO_PIN = 18;
+
+// Serial port for LiDAR
+const char* SERIAL_PORT = "/dev/serial0";
+int serial_fd = -1;
+
+// Matrix operations for Kalman filter
+class Matrix2x2 {
+public:
+    double data[2][2];
+    
+    Matrix2x2() {
+        for(int i = 0; i < 2; i++) {
+            for(int j = 0; j < 2; j++) {
+                data[i][j] = 0.0;
+            }
+        }
+    }
+    
+    Matrix2x2(double a11, double a12, double a21, double a22) {
+        data[0][0] = a11; data[0][1] = a12;
+        data[1][0] = a21; data[1][1] = a22;
+    }
+    
+    Matrix2x2 operator*(const Matrix2x2& other) const {
+        Matrix2x2 result;
+        for(int i = 0; i < 2; i++) {
+            for(int j = 0; j < 2; j++) {
+                result.data[i][j] = 0;
+                for(int k = 0; k < 2; k++) {
+                    result.data[i][j] += data[i][k] * other.data[k][j];
+                }
+            }
+        }
+        return result;
+    }
+    
+    Matrix2x2 operator+(const Matrix2x2& other) const {
+        Matrix2x2 result;
+        for(int i = 0; i < 2; i++) {
+            for(int j = 0; j < 2; j++) {
+                result.data[i][j] = data[i][j] + other.data[i][j];
+            }
+        }
+        return result;
+    }
+    
+    Matrix2x2 operator-(const Matrix2x2& other) const {
+        Matrix2x2 result;
+        for(int i = 0; i < 2; i++) {
+            for(int j = 0; j < 2; j++) {
+                result.data[i][j] = data[i][j] - other.data[i][j];
+            }
+        }
+        return result;
+    }
+    
+    Matrix2x2 transpose() const {
+        return Matrix2x2(data[0][0], data[1][0], data[0][1], data[1][1]);
+    }
+    
+    static Matrix2x2 identity() {
+        return Matrix2x2(1.0, 0.0, 0.0, 1.0);
+    }
+};
+
+class Vector2 {
+public:
+    double data[2];
+    
+    Vector2(double x = 0.0, double y = 0.0) {
+        data[0] = x;
+        data[1] = y;
+    }
+    
+    Vector2 operator+(const Vector2& other) const {
+        return Vector2(data[0] + other.data[0], data[1] + other.data[1]);
+    }
+    
+    Vector2 operator*(double scalar) const {
+        return Vector2(data[0] * scalar, data[1] * scalar);
+    }
+};
+
+Vector2 operator*(const Matrix2x2& m, const Vector2& v) {
+    return Vector2(
+        m.data[0][0] * v.data[0] + m.data[0][1] * v.data[1],
+        m.data[1][0] * v.data[0] + m.data[1][1] * v.data[1]
+    );
+}
+
+// Servo control
+void setServoAngle(int angle) {
+    int pulsewidth = 500 + (angle * 2000) / 180; // 500-2500us pulse width for 0-180 degrees
+    gpioServo(SERVO_PIN, pulsewidth);
+}
+
+void servoMoveTo(int angle) {
+    setServoAngle(angle);
+}
+
+// Serial port setup for LiDAR
+bool setupSerial() {
+    serial_fd = open(SERIAL_PORT, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    if (serial_fd == -1) {
+        std::cerr << "Failed to open serial port" << std::endl;
+        return false;
+    }
+    
+    struct termios options;
+    tcgetattr(serial_fd, &options);
+    cfsetispeed(&options, B115200);
+    cfsetospeed(&options, B115200);
+    options.c_cflag |= (CLOCAL | CREAD);
+    options.c_cflag &= ~PARENB;
+    options.c_cflag &= ~CSTOPB;
+    options.c_cflag &= ~CSIZE;
+    options.c_cflag |= CS8;
+    tcsetattr(serial_fd, TCSANOW, &options);
+    
+    return true;
+}
+
+// TFmini-S LiDAR reading
+double readTfm() {
+    if (serial_fd == -1) return -1.0;
+    
+    unsigned char buffer[32];
+    int bytes_read = read(serial_fd, buffer, sizeof(buffer));
+    
+    if (bytes_read >= 9) {
+        for (int i = 0; i <= bytes_read - 9; i++) {
+            if (buffer[i] == 0x59 && buffer[i+1] == 0x59) {
+                int dist = buffer[i+2] + buffer[i+3] * 256;
+                return dist / 1000.0; // Convert mm to meters
+            }
+        }
+    }
+    return -1.0;
+}
+
+// ActiveSeek detection class
+class ActiveSeek {
+private:
+    double min_dist;
+    double max_dist;
+    bool found;
+    int current_angle;
+
+public:
+    ActiveSeek(double min_d = 1.0, double max_d = 10.0) 
+        : min_dist(min_d), max_dist(max_d), found(false), current_angle(90) {}
+    
+    struct DetectionResult {
+        bool detected;
+        int angle;
+        double distance;
+    };
+    
+    DetectionResult detect(const std::vector<std::pair<int, double>>& scan_data) {
+        DetectionResult result = {false, 0, 0.0};
+        
+        for (const auto& data_point : scan_data) {
+            int angle = data_point.first;
+            double dist = data_point.second;
+            
+            if (dist > 0 && dist >= min_dist && dist <= max_dist) {
+                current_angle = angle;
+                found = true;
+                result.detected = true;
+                result.angle = angle;
+                result.distance = dist;
+                return result;
+            }
+        }
+        
+        found = false;
+        return result;
+    }
+};
+
+// Kalman filter for angular tracking
+class KalmanTracker {
+private:
+    Vector2 x;  // state: angle and angular velocity
+    Matrix2x2 P; // covariance matrix
+    Matrix2x2 F; // transition matrix
+    Matrix2x2 H; // measurement matrix (as 1x2, we'll use first row)
+    double R;    // measurement noise covariance
+    Matrix2x2 Q; // process noise covariance
+
+public:
+    KalmanTracker() : x(0.0, 0.0) {
+        P = Matrix2x2::identity();
+        F = Matrix2x2(1.0, 0.1, 0.0, 1.0); // dt = 0.1s
+        R = 0.1; // measurement noise
+        Q = Matrix2x2(0.01, 0.0, 0.0, 0.01); // process noise
+    }
+    
+    double predict() {
+        x = F * x;
+        P = F * P * F.transpose() + Q;
+        return x.data[0];
+    }
+    
+    void update(double measurement) {
+        // H * x for measurement prediction (just the angle, first element)
+        double y = measurement - x.data[0];
+        
+        // S = H * P * H^T + R (simplified for 1D measurement)
+        double S = P.data[0][0] + R;
+        
+        // Kalman gain K = P * H^T / S
+        Vector2 K(P.data[0][0] / S, P.data[1][0] / S);
+        
+        // Update state: x = x + K * y
+        x = x + K * y;
+        
+        // Update covariance: P = (I - K * H) * P
+        Matrix2x2 I_KH = Matrix2x2::identity();
+        I_KH.data[0][0] -= K.data[0];
+        I_KH.data[1][0] -= K.data[1];
+        
+        P = I_KH * P;
+    }
+};
+
+// Stepper motor movement
+void stepperMoveTo(double angle) {
+    const int steps_per_rev = 200 * 32; // 6400 microsteps per revolution
+    int target_steps = static_cast<int>((angle / 360.0) * steps_per_rev);
+    
+    if (target_steps >= 0) {
+        digitalWrite(DIR, HIGH);
+    } else {
+        digitalWrite(DIR, LOW);
+    }
+    
+    int steps = abs(target_steps);
+    for (int i = 0; i < steps; i++) {
+        digitalWrite(STEP, HIGH);
+        std::this_thread::sleep_for(std::chrono::microseconds(500));
+        digitalWrite(STEP, LOW);
+        std::this_thread::sleep_for(std::chrono::microseconds(500));
+    }
+}
+
+// Environment scanning
+std::vector<std::pair<int, double>> scanEnvironment() {
+    std::vector<std::pair<int, double>> scan_data;
+    
+    for (int angle = 0; angle <= 180; angle++) {
+        servoMoveTo(angle);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        double dist = readTfm();
+        scan_data.push_back(std::make_pair(angle, dist));
+    }
+    
+    return scan_data;
+}
+
+// Global cleanup flag
+bool running = true;
+
+void signalHandler(int signal) {
+    running = false;
+}
+
+// Cleanup function
+void cleanup() {
+    std::cout << "Cleaning up GPIO and servo..." << std::endl;
+    gpioServo(SERVO_PIN, 0);
+    digitalWrite(ENABLE, HIGH); // Disable the stepper driver
+    gpioTerminate();
+    if (serial_fd != -1) {
+        close(serial_fd);
+    }
+}
+
+// Main control loop
+int main() {
+    // Setup signal handler
+    signal(SIGINT, signalHandler);
+    
+    // Initialize pigpio
+    if (gpioInitialise() < 0) {
+        std::cerr << "Failed to initialize pigpio" << std::endl;
+        return 1;
+    }
+    
+    // Setup GPIO pins
+    gpioSetMode(DIR, PI_OUTPUT);
+    gpioSetMode(STEP, PI_OUTPUT);
+    gpioSetMode(ENABLE, PI_OUTPUT);
+    gpioWrite(ENABLE, 0); // Enable the stepper driver
+    
+    // Setup serial for LiDAR
+    if (!setupSerial()) {
+        std::cerr << "Failed to setup serial communication" << std::endl;
+        cleanup();
+        return 1;
+    }
+    
+    // Initialize components
+    ActiveSeek active_seek;
+    KalmanTracker kalman;
+    
+    std::cout << "Starting tracking system..." << std::endl;
+    
+    try {
+        while (running) {
+            auto scan_data = scanEnvironment();
+            auto detection = active_seek.detect(scan_data);
+            
+            if (detection.detected) {
+                std::cout << "Detected target at " << detection.angle 
+                         << "°, distance " << detection.distance << " m" << std::endl;
+                kalman.update(detection.angle);
+            } else {
+                std::cout << "Target lost, using prediction..." << std::endl;
+            }
+            
+            double predicted_angle = kalman.predict();
+            predicted_angle = std::max(0.0, std::min(180.0, predicted_angle)); // clamp
+            
+            std::cout << "Moving to predicted angle " << predicted_angle << "°" << std::endl;
+            servoMoveTo(static_cast<int>(predicted_angle));
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    } catch (...) {
+        std::cerr << "Exception caught in main loop" << std::endl;
+    }
+    
+    cleanup();
+    return 0;
+}
