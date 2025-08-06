@@ -1,1 +1,286 @@
+import sys
+import math
+import numpy as np
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox
+from PyQt6.QtGui import QColor
+import pyqtgraph.opengl as gl
+from pyqtgraph.Qt import QtCore
+
+# Import SGP4 library for TLE propagation
+from sgp4.api import Satrec, jday
+from datetime import datetime, timedelta, timezone
+
+class OrbitTracker3D(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Real-Time Orbit and Drone Tracking (TLE Based)")
+        self.resize(1000, 700)
+
+        self.predicted_positions = []  # List of np.array([x,y,z]) predicted positions
+        self.measured_positions = []   # Measured points (LiDAR detections)
+
+        # --- TLE Data and SGP4 Initialization ---
+        # The provided Two-Line Elements (TLE) for a satellite
+        self.line1 = "1 57912U 23146X   24099.49439401  .00006757  00000+0  51475-3 0  9997"
+        self.line2 = "2 57912  43.0018 157.5807 0001420 272.5369  87.5310 15.02537576 31746"
+        
+        # Create a Satrec object from the TLE lines
+        self.satellite = Satrec.twoline2rv(self.line1, self.line2)
+        
+        # Store the start time of the application to calculate elapsed time for propagation
+        self.start_time = datetime.now(timezone.utc)
+        # --- End TLE Data and SGP4 Initialization ---
+
+        self.init_ui()
+        self.init_gl()
+
+        # Timer for periodic scene update at 10 Hz (every 100 milliseconds)
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update_scene)
+        self.timer.start(100) # Update every 100 ms
+
+    def init_ui(self):
+        """Initializes the user interface elements."""
+        main_layout = QHBoxLayout(self)
+
+        # Control panel on the left side of the window
+        control_panel = QVBoxLayout()
+
+        # Group box for displaying tracking information
+        info_box = QGroupBox("Tracking Info")
+        info_layout = QVBoxLayout()
+
+        # Labels to display status, predicted position, and measured position
+        self.status_label = QLabel("Status: Initializing")
+        info_layout.addWidget(self.status_label)
+        self.pred_label = QLabel("Predicted Pos: N/A")
+        info_layout.addWidget(self.pred_label)
+        self.meas_label = QLabel("Measured Pos: N/A")
+        info_layout.addWidget(self.meas_label)
+
+        info_box.setLayout(info_layout)
+        control_panel.addWidget(info_box)
+
+        # Button to clear the measured path history
+        btn_clear = QPushButton("Clear Measured Path")
+        btn_clear.clicked.connect(self.clear_measured_path)
+        control_panel.addWidget(btn_clear)
+
+        # Add a stretch to push elements to the top
+        control_panel.addStretch(1)
+
+        # Add the control panel to the main layout, taking 1/5th of the width
+        main_layout.addLayout(control_panel, 1)
+
+        # 3D OpenGL View on the right side
+        self.gl_view = gl.GLViewWidget()
+        self.gl_view.opts['distance'] = 60 # Initial camera distance
+        self.gl_view.setCameraPosition(elevation=30, azimuth=45) # Initial camera angle
+        
+        # Add the 3D view to the main layout, taking 4/5th of the width
+        main_layout.addWidget(self.gl_view, 4)
+
+        self.setLayout(main_layout)
+
+    def generate_sphere_mesh_data(self, radius, rows, cols):
+        """
+        Generates vertices and faces for a sphere.
+        Adapted from common sphere generation algorithms for mesh items.
+        """
+        phi = np.linspace(0, np.pi, rows)
+        theta = np.linspace(0, 2 * np.pi, cols)
+
+        x = radius * np.outer(np.sin(phi), np.cos(theta))
+        y = radius * np.outer(np.sin(phi), np.sin(theta))
+        z = radius * np.outer(np.cos(phi), np.ones(cols))
+
+        # Reshape to a list of vertices
+        vertices = np.stack([x.flatten(), y.flatten(), z.flatten()], axis=-1)
+
+        # Generate faces (triangles)
+        faces = []
+        for i in range(rows - 1):
+            for j in range(cols - 1):
+                p1 = i * cols + j
+                p2 = i * cols + (j + 1)
+                p3 = (i + 1) * cols + (j + 1)
+                p4 = (i + 1) * cols + j
+
+                # Two triangles per quad
+                faces.append([p1, p2, p3])
+                faces.append([p1, p3, p4])
+        
+        return vertices, np.array(faces)
+
+
+    def init_gl(self):
+        """Initializes the OpenGL 3D scene elements."""
+        self.gl_view.clear() # Clear any existing items in the view
+
+        # Add a grid to the scene for reference
+        grid = gl.GLGridItem()
+        # Increased grid size and spacing for a larger, more suitable view
+        grid.setSize(200, 200) 
+        grid.setSpacing(20, 20) 
+        self.gl_view.addItem(grid)
+
+        # Add axes arrows (X: Red, Y: Green, Z: Blue)
+        # Increased arrow length to match the larger grid
+        arrow_len = 100 
+        self.arrow_x = self.create_arrow(np.array([0, 0, 0]), np.array([arrow_len, 0, 0]), QColor(255, 0, 0))
+        self.arrow_y = self.create_arrow(np.array([0, 0, 0]), np.array([0, arrow_len, 0]), QColor(0, 255, 0))
+        self.arrow_z = self.create_arrow(np.array([0, 0, 0]), np.array([0, 0, arrow_len]), QColor(0, 0, 255))
+
+        self.gl_view.addItem(self.arrow_x)
+        self.gl_view.addItem(self.arrow_y)
+        self.gl_view.addItem(self.arrow_z)
+
+        # Add a sphere to represent the Earth (the globe)
+        # Earth's radius is approximately 6378 km. If our scene units are in km,
+        # we need to scale it down to be visible relative to the grid and orbit.
+        # Let's use a radius of 6.378 units for visualization, as our coordinates are in km.
+        earth_radius_for_display = 6.378  # Represents 6378 km, scaled down for visualization
+        
+        # Generate sphere mesh data with higher resolution for a smoother appearance
+        sphere_vertices, sphere_faces = self.generate_sphere_mesh_data(
+            radius=earth_radius_for_display, rows=100, cols=100 # Increased rows/cols for smoother sphere
+        )
+        # Create GLMeshItem for the Earth sphere with a more earth-like color
+        self.earth_sphere = gl.GLMeshItem(
+            vertexes=sphere_vertices, faces=sphere_faces, 
+            color=(0, 100, 200, 255), # A more blue-green color for the Earth (RGBA)
+            drawEdges=False, # Don't draw edges for a smooth look
+            edgeColor=(0,0,0,0) # Transparent edges
+        )
+        self.gl_view.addItem(self.earth_sphere)
+
+
+        # Markers for predicted and measured positions
+        # Predicted marker (orange, larger)
+        self.marker_pred = gl.GLScatterPlotItem(size=15, color=(1, 0.5, 0, 1), pxMode=False) 
+        # Measured marker (red, smaller)
+        self.marker_meas = gl.GLScatterPlotItem(size=10, color=(1, 0, 0, 1), pxMode=False)   
+        self.gl_view.addItem(self.marker_pred)
+        self.gl_view.addItem(self.marker_meas)
+
+        # Line showing measured path history (red, semi-transparent)
+        self.measured_path_line = gl.GLLinePlotItem(color=(1, 0, 0, 0.6), width=2, antialias=True)
+        self.gl_view.addItem(self.measured_path_line)
+
+        # Orbit path line (blue, static) - This will be updated dynamically based on TLE propagation
+        # For now, initialize it as empty, it will be populated in update_scene
+        self.orbit_line = gl.GLLinePlotItem(pos=np.empty((0,3)), color=(0.5, 0.5, 1, 1), width=2, antialias=True)
+        self.gl_view.addItem(self.orbit_line)
+
+        # Adjust camera distance to fit the larger scene, now including the Earth sphere
+        self.gl_view.opts['distance'] = 250
+
+
+    def create_arrow(self, start, end, color):
+        """Helper function to create a simple arrow for axes."""
+        pts = np.vstack([start, end])
+        arrow = gl.GLLinePlotItem(pos=pts, color=color, width=3, antialias=True)
+        return arrow
+
+    def update_scene(self):
+        """
+        Updates the 3D scene with the latest predicted and measured positions.
+        This method now uses SGP4 to propagate the satellite's position based on TLE.
+        """
+        # Get the current time in UTC
+        current_time = datetime.now(timezone.utc)
+        
+        # Calculate Julian date and fractional part for SGP4 propagation
+        jd, fr = jday(current_time.year, current_time.month, current_time.day,
+                      current_time.hour, current_time.minute,
+                      current_time.second + current_time.microsecond * 1e-6)
+
+        # Propagate the satellite's orbit using the SGP4 algorithm
+        error_code, position, velocity = self.satellite.sgp4(jd, fr)
+
+        if error_code == 0:
+            # Convert the position list to a NumPy array
+            pred_pos = np.array(position)
+            
+            # Update the status and predicted position labels
+            self.status_label.setText("Status: Tracking")
+            self.pred_label.setText(f"Predicted Pos: {pred_pos[0]:.2f}, {pred_pos[1]:.2f}, {pred_pos[2]:.2f}")
+
+            # Update the predicted marker's position
+            self.marker_pred.setData(pos=np.array([pred_pos]))
+
+            # --- Simulate Measured Position (with noise) ---
+            # Add some random noise to the predicted position to simulate measurement error
+            noise = np.random.normal(0, 0.5, size=3) # Gaussian noise with mean 0, std dev 0.5
+            meas_pos = pred_pos + noise
+            self.measured_positions.append(meas_pos) # Add to history of measured positions
+            
+            # Update the measured position label
+            self.meas_label.setText(f"Measured Pos: {meas_pos[0]:.2f}, {meas_pos[1]:.2f}, {meas_pos[2]:.2f}")
+
+            # Update the measured markers (all historical points)
+            measured_array = np.array(self.measured_positions)
+            self.marker_meas.setData(pos=measured_array)
+
+            # Update the line showing the measured path history
+            if len(measured_array) > 1:
+                self.measured_path_line.setData(pos=measured_array)
+            # --- End Simulate Measured Position ---
+
+            # --- Generate and Display Full Orbit Path (for visualization) ---
+            # This part generates a series of points representing the full orbit
+            # around the current predicted position. This is for visualization
+            # of the path, not for the single predicted point.
+            
+            # Calculate orbit points for the next 24 hours (e.g., 1440 minutes)
+            # You can adjust the number of points for smoother or faster rendering
+            num_orbit_points = 360 # e.g., one point every 4 minutes for 24 hours
+            orbit_path_points = []
+            
+            # Propagate for a full orbital period or a fixed duration
+            # For simplicity, let's propagate for a few hours around the current time
+            for i in range(-num_orbit_points // 2, num_orbit_points // 2):
+                # Calculate time offset from current time
+                time_offset_seconds = i * 60 * 5 # 5 minutes per step
+                future_time = current_time + timedelta(seconds=time_offset_seconds)
+                
+                # Get Julian date for the future time
+                future_jd, future_fr = jday(future_time.year, future_time.month, future_time.day,
+                                            future_time.hour, future_time.minute,
+                                            future_time.second + future_time.microsecond * 1e-6)
+                
+                # Propagate to get position at future_time
+                err, future_pos, vel = self.satellite.sgp4(future_jd, future_fr)
+                if err == 0:
+                    orbit_path_points.append(future_pos)
+            
+            if orbit_path_points:
+                self.orbit_line.setData(pos=np.array(orbit_path_points))
+            # --- End Generate and Display Full Orbit Path ---
+
+        else:
+            # Handle SGP4 propagation errors
+            self.status_label.setText(f"Error: SGP4 code {error_code}")
+            self.pred_label.setText("Predicted Pos: N/A")
+            self.meas_label.setText("Measured Pos: N/A")
+            # Clear markers if there's an error
+            self.marker_pred.setData(pos=np.empty((0, 3)))
+            self.marker_meas.setData(pos=np.empty((0, 3)))
+            self.measured_path_line.setData(pos=np.empty((0, 3)))
+            self.orbit_line.setData(pos=np.empty((0,3)))
+
+
+    def clear_measured_path(self):
+        """Clears the history of measured positions and updates the display."""
+        self.measured_positions.clear()
+        self.marker_meas.setData(pos=np.empty((0, 3))) # Clear measured markers in GL view
+        self.measured_path_line.setData(pos=np.empty((0, 3))) # Clear measured path line
+        self.meas_label.setText("Measured Pos: N/A") # Reset label
+
+# Main application entry point
+if __name__ == "__main__":
+    app = QApplication(sys.argv) # Create the QApplication instance
+    window = OrbitTracker3D() # Create an instance of our OrbitTracker3D window
+    window.show() # Display the window
+    sys.exit(app.exec()) # Start the PyQt event loop
 
