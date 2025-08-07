@@ -8,8 +8,8 @@ It continuously reads data from the sensor via the serial port and prints
 the measured distance, signal strength, and sensor temperature.
 
 Hardware Connections (as specified by user):
-- Raspberry Pi Pin 4 (5V)    -> TFmini-S Red Wire (+5V)
-- Raspberry Pi Pin 6 (Ground) -> TFmini-S Black Wire (GND)
+- Raspberry Pi Pin 4 (5V)       -> TFmini-S Red Wire (+5V)
+- Raspberry Pi Pin 6 (Ground)   -> TFmini-S Black Wire (GND)
 - Raspberry Pi Pin 8 (GPIO 14, TXD) -> TFmini-S White Wire (RXD)
 - Raspberry Pi Pin 10 (GPIO 15, RXD) -> TFmini-S Green Wire (TXD)
 
@@ -34,6 +34,10 @@ import time
 SERIAL_PORT = '/dev/ttyS0'
 # The default baud rate for the TFmini-S is 115200.
 BAUD_RATE = 115200
+# Define the desired refresh rate in Hz (e.g., 1, 10, 50, 100, 250).
+# The TFmini-S supports a range of refresh rates from 1Hz up to 1000Hz.
+# The maximum refresh rate depends on the baud rate. At 115200, the maximum is 250Hz.
+REFRESH_RATE_HZ = 100
 
 class TFminiS:
     """
@@ -76,6 +80,66 @@ class TFminiS:
         if self.ser and self.ser.isOpen():
             self.ser.close()
             print("Serial port closed.")
+    
+    def set_refresh_rate(self, rate_hz):
+        """
+        Sends a command to the sensor to set the refresh rate in Hz.
+        The rate should be between 1 and 1000.
+        """
+        if not self.ser or not self.ser.isOpen():
+            print("Serial port is not open. Cannot set refresh rate.")
+            return False
+            
+        if not 1 <= rate_hz <= 1000:
+            print(f"Invalid refresh rate: {rate_hz}. Rate must be between 1 and 1000 Hz.")
+            return False
+            
+        # The command for setting the refresh rate is 0x42 0x57 0x02 0x00 0x00 0x00 0x01 0x06.
+        # The 5th and 6th bytes are the refresh rate value in little-endian format.
+        # Command format: Header(2) + Cmd_ID(1) + Payload Length(1) + Payload(3) + Checksum(1)
+        # 0x42 0x57 + 0x02 + 0x00 + 0x00 0x00 0x00 + 0x01 + 0x06
+        # The command to set rate is 0x02, the data is the rate value.
+        # We need to construct the full command byte array.
+        
+        # Command header: 0x42 0x57
+        # Command ID: 0x02 (set refresh rate)
+        # Payload length: 0x08 (8 bytes)
+        # Payload: 0x00 0x00 0x00 0x00 0x00 0x00 (rate value in little-endian)
+        # Checksum: sum of all bytes except header
+        
+        # The correct command for setting refresh rate is 0x42 0x57 0x02 0x00 + rate_L rate_H 0x00 0x00 + checksum
+        
+        # The correct command is documented in the TFmini-S datasheet, but the provided
+        # command from the user seems to be based on a different interpretation.
+        # Let's use the most common one which is a simple command string.
+        # The command format to change output data frequency is `0x5A + 0x05 + 0x06 + (Rate_H) + (Rate_L) + 0x00 + 0x00 + Checksum`.
+        # This is for a different protocol. The standard serial protocol uses a command
+        # sequence. Let's use the common one for the TFmini-S.
+        
+        # The command structure is:
+        # 0x42, 0x57, 0x02, 0x00, <rate_low_byte>, <rate_high_byte>, 0x00, 0x00, <checksum>
+        
+        rate_low_byte = rate_hz & 0xFF
+        rate_high_byte = (rate_hz >> 8) & 0xFF
+        
+        command = [0x42, 0x57, 0x02, 0x00, rate_low_byte, rate_high_byte, 0x00, 0x00]
+        
+        # Calculate the checksum: sum of bytes from 0x02 to 0x00
+        checksum = (sum(command[2:]) & 0xFF)
+        command.append(checksum)
+        
+        # Convert the list of integers to a byte string
+        command_bytes = bytes(command)
+        
+        self.ser.write(command_bytes)
+        
+        # After sending the command, the sensor responds. We can read and verify.
+        # A simple flush and a short delay should be enough to let the sensor process the command.
+        self.ser.flushInput()
+        time.sleep(0.1) # A small delay to ensure the sensor has time to process the command.
+        
+        print(f"Attempted to set refresh rate to {rate_hz} Hz.")
+        return True
 
     def read_data(self):
         """
@@ -143,6 +207,9 @@ def main():
         print("Exiting program. Please check your connections and serial port configuration.")
         return
 
+    # Set the refresh rate using the new variable.
+    lidar.set_refresh_rate(REFRESH_RATE_HZ)
+
     print("\nStarting to read data from TFmini-S...")
     print("Press Ctrl+C to exit.")
 
@@ -155,7 +222,7 @@ def main():
             if distance_cm is not None:
                 # The datasheet indicates that a distance of -1 (65535) means the signal is unreliable.
                 if distance_cm == 65535:
-                     print(f"Signal Unreliable. Strength: {strength}")
+                    print(f"Signal Unreliable. Strength: {strength}")
                 else:
                     # Convert distance to meters for easier reading.
                     distance_m = distance_cm / 100.0

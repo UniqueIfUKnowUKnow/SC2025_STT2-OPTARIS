@@ -1,35 +1,39 @@
+//Stepper Motor definition
 //==================================================================================================================================================================
-// Refactored Stepper Motor definition using AccelStepper library
 //==================================================================================================================================================================
-#include <AccelStepper.h>
-#include <Servo.h>
+#include <Stepper.h>
 
-// Stepper Motor Pin Definitions
-const int DIR_PIN = 2;       // Digital pin connected to DRV8825 DIR pin
-const int STEP_PIN = 3;      // Digital pin connected to DRV8825 STEP pin
-const int ENABLE_PIN = 4;    // Digital pin connected to DRV8825 EN pin (LOW to enable, HIGH to disable)
+const int DIR_PIN = 2;     // Digital pin connected to DRV8825 DIR pin
+const int STEP_PIN = 3;    // Digital pin connected to DRV8825 STEP pin
+const int ENABLE_PIN = 4;  // Digital pin connected to DRV8825 EN pin (LOW to enable, HIGH to disable)
 
 // Define the number of steps per revolution for the motor
-// For a NEMA 17 motor at 1.8 degrees/step and 1/32 microstepping:
-// (360 / 1.8) steps/rev * 32 microsteps/step = 6400 steps/rev
-const int STEPS_PER_REVOLUTION = 6400;
+// Most common NEMA 17 motors are 50 steps/revolution for full step mode// If the motor is 1.8 degrees per step, then 360 / 1.8 = 50 steps
+const int STEPS_PER_REVOLUTION = 6400*3 ; // with full 1/32 microstepping -> 32 steps per 1.8 degrees
+                                          // Therefore for 90 degrees -> 1600 steps
 
-// AccelStepper setup
-// The DRV8825 driver requires a STEP and DIR pin, which corresponds to the DRIVER type.
-AccelStepper myStepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
+Stepper myStepper(STEPS_PER_REVOLUTION, STEP_PIN, DIR_PIN);
 //==================================================================================================================================================================
 //==================================================================================================================================================================
 
 
+
+//Servo definition
 //==================================================================================================================================================================
-// Servo definition (unchanged)
 //==================================================================================================================================================================
+#include <Servo.h>
+
 Servo myServo;
+
 const int SERVO_PIN = 9;
+
+//int pos = 0;
+
 int starting_pos = 0;
 int current_pos = 0;
 //==================================================================================================================================================================
 //==================================================================================================================================================================
+
 
 
 void setup() 
@@ -40,101 +44,124 @@ void setup()
   delay(30);
 
   // Stepper Motor calibration
-  Serial.begin(9600);
-  Serial.println("Stepper Motor Control Start (using AccelStepper.h)");
+  Serial.begin(115200);
+  Serial.println("Stepper Motor Control Start (using Stepper.h)");
 
-  // AccelStepper requires setting a maximum speed and acceleration.
-  // The original code used a speed of 90 RPM with Stepper.h.
-  // To convert to AccelStepper's steps/second:
-  // 90 RPM * (6400 steps/rev / 60 sec/min) = 9600 steps/sec
-  myStepper.setMaxSpeed(9600.0);
-  myStepper.setAcceleration(4000.0); // A starting acceleration value (adjust as needed)
+  pinMode(ENABLE_PIN, OUTPUT);
 
-  // Set the enable pin for the driver.
-  myStepper.setEnablePin(ENABLE_PIN);
-  // Enable the motor driver (by setting the pin LOW).
-  myStepper.enableOutputs();
+  digitalWrite(ENABLE_PIN, LOW);
   Serial.println("Driver Enabled.");
+
+  myStepper.setSpeed(120); // 60 RPM (1 revolution per second)
 }
+
 
 
 void loop()
 {
-  // do-while loop for upward Servo tilt
+  // do-while loop for clockwise rotations
   do 
   {
     Serial.println("Rotating Clockwise...");
-    // Use myStepper.move() to set a relative target position.
-    // The `myStepper.run()` call inside the while loop will block
-    // until the movement is complete, replicating the original behavior.
-    myStepper.move(STEPS_PER_REVOLUTION);
-    while (myStepper.distanceToGo() != 0) {
-      myStepper.run();
-    }
+    myStepper.step(STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
     Serial.println("Clockwise rotation complete.");
+    //delay(30);
     delay(10);
 
     while(current_pos < starting_pos + 2)
     {
+      Serial.println("Tilting up...");
       myServo.write(current_pos);
+      //delay(15);
       delay(5);
       current_pos += 1;
+      Serial.println("Tilting up complete.");
     }
     starting_pos += 2;
 
-    Serial.println("Rotating Counter-Clockwise...");
-    myStepper.move(-STEPS_PER_REVOLUTION);
-    while (myStepper.distanceToGo() != 0) {
-      myStepper.run();
-    }
-    Serial.println("Counter-clockwise rotation complete.");
+    Serial.println("Rotating Clockwise...");
+    myStepper.step(-STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
+    Serial.println("Clockwise rotation complete.");
+    // delay(30);
     delay(10);
 
     while(current_pos < starting_pos + 2)
     {
+      Serial.println("Tilting up...");
       myServo.write(current_pos);
+      // delay(15);
       delay(5);
       current_pos += 1;
+      Serial.println("Tilting up complete.");
     }
     starting_pos += 2;
   }
   while(starting_pos < 70);
 
-
-  // do-while loop for downward Servo tilt
+  // do-while loop for counter-clockwise rotations
   do 
   {
     Serial.println("Rotating Clockwise...");
-    myStepper.move(STEPS_PER_REVOLUTION);
-    while (myStepper.distanceToGo() != 0) {
-      myStepper.run();
-    }
+    myStepper.step(STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
     Serial.println("Clockwise rotation complete.");
+    // delay(30);
     delay(10);
 
     while(current_pos > starting_pos + 2)
     {
+      Serial.println("Tilting down...");
       myServo.write(current_pos);
+      // delay(15);
       delay(5);
       current_pos -= 1;
+      Serial.println("Tilting down complete.");
     }
     starting_pos -= 2;
 
-    Serial.println("Rotating Counter-Clockwise...");
-    myStepper.move(-STEPS_PER_REVOLUTION);
-    while (myStepper.distanceToGo() != 0) {
-      myStepper.run();
-    }
-    Serial.println("Counter-clockwise rotation complete.");
+    Serial.println("Rotating Clockwise...");
+    myStepper.step(-STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
+    Serial.println("Clockwise rotation complete.");
+    // delay(30);
     delay(10);
 
     while(current_pos > starting_pos + 2)
     {
+      Serial.println("Tilting down...");
       myServo.write(current_pos);
+      // delay(15);
       delay(5);
       current_pos -= 1;
+      Serial.println("Tilting down complete.");
     }
     starting_pos -= 2;
   }
   while(starting_pos > 0);
 }
+
+
+// void loop()
+// {
+//   Serial.println("Rotating Clockwise...");
+//   myStepper.step(STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
+//   Serial.println("Clockwise rotation complete.");
+//   delay(30);
+
+//   for(pos = 0; pos <= 2; pos += 1) // pos <= degrees of movement
+//   {
+//     myServo.write(pos);
+//     delay(15);
+//   }
+
+//   Serial.println("Rotating Counter-Clockwise...");
+//   myStepper.step(-STEPS_PER_REVOLUTION); // Makes a full revolution counter-clockwise
+//   Serial.println("Counter-clockwise rotation complete.");
+//   delay(500);
+
+//   for (pos = 2; pos >= 0; pos -= 1) // pos = degrees of movement
+//   {
+//     myServo.write(pos);
+//     delay(15);
+//   }
+
+  
+// }
