@@ -1,0 +1,35 @@
+import asyncio
+import websockets
+
+# This function will handle each client connection
+async def handler(websocket):
+    print(f"A client just connected!")
+    try:
+        # Wait to receive a message from the client
+        message = await websocket.recv()
+        print(f"<<< Received from client: {message}")
+        
+        # Send a response back to the client
+        response = f"Hello from the Raspberry Pi! You sent: {message}"
+        await websocket.send(response)
+        print(f">>> Sent to client: {response}")
+
+    except websockets.exceptions.ConnectionClosedOK:
+        print("A client disconnected normally.")
+    except websockets.exceptions.ConnectionClosedError:
+        print("A client disconnected with an error.")
+
+
+# This starts the server
+async def main():
+    # Start the server on 0.0.0.0 to be accessible on the network
+    # Port 8765 is a common choice for examples
+    async with websockets.serve(handler, "0.0.0.0", 8765):
+        print("WebSocket server started at ws://0.0.0.0:8765")
+        await asyncio.Future()  # Run forever
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nServer is shutting down.")
