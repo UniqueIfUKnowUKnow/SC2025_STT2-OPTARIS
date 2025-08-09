@@ -1,0 +1,182 @@
+/* src/App.css */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden; /* Prevents scrollbars */
+  background-color: #101010;
+  color: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+.hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* Allows clicks to go through to the canvas */
+  display: flex;
+  justify-content: space-between;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.hud-panel {
+  background-color: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 15px;
+  pointer-events: all; /* Re-enable pointer events for the panels */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 95vh;
+}
+
+.hud-left {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.hud-right {
+  width: 280px;
+}
+
+h3 {
+  margin: 0 0 10px 0;
+  color: #00aaff;
+  font-weight: 500;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 5px;
+}
+
+.status-line, .telemetry-item, .legend-item {
+  display: flex;
+  justify-content: space-between;
+}
+
+.status-value {
+  color: #00ffdd;
+  font-weight: bold;
+}
+
+.warning-text {
+  color: #ffaa00;
+}
+
+.error-text {
+  color: #ff4444;
+  font-weight: bold;
+}
+
+progress {
+  width: 100%;
+}
+
+.history-table {
+  flex-grow: 1;
+  overflow-y: auto;
+  font-size: 0.9em;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 4px 8px;
+  text-align: left;
+}
+
+th {
+  color: #00aaff;
+}
+
+tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.start-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  text-align: center;
+}
+
+.start-container h1 {
+  color: #00aaff;
+  font-size: 2.5em;
+}
+
+.start-container p {
+  font-size: 1.2em;
+  color: #bbbbbb;
+}
+
+.start-container button {
+  margin-top: 20px;
+  padding: 15px 30px;
+  font-size: 1.2em;
+  font-weight: bold;
+  color: white;
+  background-color: #00aaff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.start-container button:hover {
+  background-color: #0088cc;
+}
+
+.start-container button:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+}
+
+/* Add to src/App.css */
+.control-buttons {
+  display: flex;
+  justify-content: space-around;
+  gap: 10px;
+}
+.control-buttons button {
+  flex-grow: 1;
+  padding: 8px 12px;
+  font-size: 0.9em;
+  font-weight: bold;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.control-buttons button:disabled {
+  background-color: transparent;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.3);
+  cursor: not-allowed;
+}
+.start-btn { background-color: rgba(0, 170, 0, 0.5); }
+.start-btn:not(:disabled):hover { background-color: rgba(0, 200, 0, 0.8); }
+
+.stop-btn { background-color: rgba(255, 136, 0, 0.6); }
+.stop-btn:not(:disabled):hover { background-color: rgba(255, 136, 0, 0.9); }
+
+.reset-btn { background-color: rgba(204, 0, 0, 0.5); }
+.reset-btn:not(:disabled):hover { background-color: rgba(238, 0, 0, 0.8); }
