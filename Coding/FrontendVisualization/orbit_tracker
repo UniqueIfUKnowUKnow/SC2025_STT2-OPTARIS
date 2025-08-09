@@ -1,1 +1,405 @@
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
+import * as THREE from 'three';
+import * as satellite from 'satellite.js';
+import { format } from 'date-fns';
+import RealisticEarth from './RealisticEarth';
+import SimpleEarth from './SimpleEarth';
+import Starfield from './Starfield';
+import './OrbitTracker.css';
+
+// TLE Data for ISS (International Space Station) - faster orbit, ~90 minute period
+const TLE_LINE1 = "1 25544U 98067A   24001.00000000  .00002182  00000-0  40768-4 0  9990";
+const TLE_LINE2 = "2 25544  51.6461 339.2971 0002829  68.7676 291.3964 15.48919103123456";
+
+// Earth constants
+const EARTH_RADIUS_KM = 6371; // Earth radius in kilometers
+const SCALE_FACTOR = 0.001; // Scale factor to make visualization manageable
+
+// Coordinate conversion utilities
+const convertEciToCartesian = (eciPosition) => {
+  // ECI coordinates are already in Cartesian form (x, y, z) in km
+  // We just need to scale them for visualization
+  return [
+    eciPosition.x * SCALE_FACTOR,
+    eciPosition.z * SCALE_FACTOR, // Swap Y and Z for proper orientation
+    -eciPosition.y * SCALE_FACTOR
+  ];
+};
+
+
+
+// Enhanced lighting component for realistic space environment
+const SpaceLighting = () => {
+  return (
+    <>
+      {/* Main sun light - enhanced for better normal map visibility */}
+      <directionalLight 
+        position={[100, 50, 50]} 
+        intensity={4} 
+        color="#ffffff" 
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+      />
+      
+      {/* Enhanced ambient light for better surface detail visibility */}
+      <ambientLight intensity={0.2} color="#ffffff" />
+      
+      {/* Additional directional lights for better surface illumination */}
+      <directionalLight 
+        position={[-50, 30, 50]} 
+        intensity={1.5} 
+        color="#ffeeaa" 
+      />
+      
+      {/* Rim light for atmospheric effect */}
+      <pointLight position={[0, 0, 100]} intensity={0.5} color="#66aaff" />
+    </>
+  );
+};
+
+// Axes component
+const Axes = () => {
+  return (
+    <group>
+      {/* X-axis (Red) */}
+      <mesh position={[50, 0, 0]}>
+        <cylinderGeometry args={[0.1, 0.1, 100]} />
+        <meshStandardMaterial color="red" />
+      </mesh>
+      {/* Y-axis (Green) */}
+      <mesh position={[0, 50, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.1, 0.1, 100]} />
+        <meshStandardMaterial color="green" />
+      </mesh>
+      {/* Z-axis (Blue) */}
+      <mesh position={[0, 0, 50]} rotation={[0, Math.PI / 2, 0]}>
+        <cylinderGeometry args={[0.1, 0.1, 100]} />
+        <meshStandardMaterial color="blue" />
+      </mesh>
+    </group>
+  );
+};
+
+// Satellite marker component with pulsing animation
+const SatelliteMarker = ({ position, color, size = 0.8 }) => {
+  const meshRef = useRef();
+  
+  useEffect(() => {
+    if (!meshRef.current) return;
+    
+    const animate = () => {
+      if (meshRef.current) {
+        // Pulsing animation
+        const time = Date.now() * 0.005;
+        meshRef.current.scale.setScalar(1 + Math.sin(time) * 0.3);
+      }
+      requestAnimationFrame(animate);
+    };
+    animate();
+  }, []);
+  
+  if (!position) return null;
+  
+  return (
+    <mesh ref={meshRef} position={position}>
+      <sphereGeometry args={[size, 16, 16]} />
+      <meshStandardMaterial 
+        color={color} 
+        emissive={color} 
+        emissiveIntensity={0.5}
+        transparent
+        opacity={0.9}
+      />
+    </mesh>
+  );
+};
+
+// Complete orbit path component
+const OrbitPath = ({ satelliteRec, currentTime }) => {
+  const orbitPoints = useMemo(() => {
+    if (!satelliteRec || !currentTime) return [];
+    
+    const points = [];
+    const orbitPeriod = 93; // ISS orbit period in minutes
+    const numPoints = 300; // More points for smoother orbit
+    
+    // Generate orbit path for one complete orbit
+    for (let i = 0; i < numPoints; i++) {
+      const timeOffset = (i / numPoints) * orbitPeriod * 60 * 1000; // Convert to milliseconds
+      const futureTime = new Date(currentTime.getTime() - (orbitPeriod * 30 * 1000) + timeOffset); // Start from 30 minutes ago
+      
+      try {
+        const positionAndVelocity = satellite.propagate(satelliteRec, futureTime);
+        if (positionAndVelocity.position && !positionAndVelocity.position.error) {
+          const cartesianPos = convertEciToCartesian(positionAndVelocity.position);
+          points.push(new THREE.Vector3(cartesianPos[0], cartesianPos[1], cartesianPos[2]));
+        }
+      } catch (error) {
+        console.warn('Error generating orbit point:', error);
+      }
+    }
+    
+    return points;
+  }, [satelliteRec, Math.floor(currentTime?.getTime() / 60000)]); // Update every minute
+
+  if (orbitPoints.length < 2) return null;
+  
+  return (
+    <line>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          count={orbitPoints.length}
+          array={new Float32Array(orbitPoints.flatMap(p => [p.x, p.y, p.z]))}
+          itemSize={3}
+        />
+      </bufferGeometry>
+      <lineBasicMaterial color="#00ff88" opacity={0.9} transparent linewidth={3} />
+    </line>
+  );
+};
+
+// Measured path component with lines from Earth surface
+const MeasuredPath = ({ positions }) => {
+  if (!positions || positions.length < 2) return null;
+  
+  const earthRadius = EARTH_RADIUS_KM * SCALE_FACTOR;
+  const lineSegments = [];
+  
+  // For each satellite position, create a line from Earth surface to satellite
+  positions.forEach(pos => {
+    const satPosition = new THREE.Vector3(pos[0], pos[1], pos[2]);
+    
+    // Calculate the direction from Earth center to satellite
+    const direction = satPosition.clone().normalize();
+    
+    // Find the point on Earth's surface along this direction
+    const surfacePoint = direction.clone().multiplyScalar(earthRadius);
+    
+    // Add both points to create a line segment
+    lineSegments.push(surfacePoint, satPosition);
+  });
+  
+  return (
+    <line>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          count={lineSegments.length}
+          array={new Float32Array(lineSegments.flatMap(p => [p.x, p.y, p.z]))}
+          itemSize={3}
+        />
+      </bufferGeometry>
+      <lineBasicMaterial color="#ff0000" opacity={0.6} transparent />
+    </line>
+  );
+};
+
+// 3D Scene component
+const Scene3D = ({ 
+  predictedPosition, 
+  measuredPositions, 
+  satelliteRec,
+  currentTime
+}) => {
+  return (
+    <div style={{ width: '80%', height: '100%' }}>
+      <Canvas
+        camera={{ position: [20, 20, 20], fov: 75 }}
+        style={{ background: '#000000' }}
+        gl={{ antialias: true, alpha: false }}
+      >
+        {/* Enhanced space lighting */}
+        <SpaceLighting />
+        
+        {/* Starfield background */}
+        <Starfield count={8000} radius={400} />
+        
+        {/* Earth with Suspense for texture loading */}
+        <Suspense fallback={
+          <mesh>
+            <sphereGeometry args={[EARTH_RADIUS_KM * SCALE_FACTOR, 64, 32]} />
+            <meshStandardMaterial color="#2E7D32" />
+          </mesh>
+        }>
+          <SimpleEarth radius={EARTH_RADIUS_KM * SCALE_FACTOR} />
+        </Suspense>
+        
+        {/* Current satellite position (the moving dot) */}
+        <SatelliteMarker 
+          position={predictedPosition} 
+          color="#ff6b35" 
+          size={0.5} 
+        />
+        
+        {/* Complete orbit path */}
+        <OrbitPath satelliteRec={satelliteRec} currentTime={currentTime} />
+        
+        {/* Measured path trail */}
+        <MeasuredPath positions={measuredPositions} />
+        
+        <OrbitControls 
+          enablePan={true}
+          enableZoom={true}
+          enableRotate={true}
+          maxDistance={50}
+          minDistance={5}
+          autoRotate={false}
+        />
+      </Canvas>
+    </div>
+  );
+};
+
+// Control panel component
+const ControlPanel = ({ 
+  status, 
+  predictedPosition, 
+  measuredPosition, 
+  onClearMeasuredPath 
+}) => {
+  return (
+    <div className="control-panel">
+      <div className="info-box">
+        <h3>Tracking Info</h3>
+        <div className="info-item">
+          <label>Status:</label>
+          <span>{status}</span>
+        </div>
+        <div className="info-item">
+          <label>Satellite:</label>
+          <span>ISS (25544)</span>
+        </div>
+        <div className="info-item">
+          <label>Current Position (km):</label>
+          <span>
+            {predictedPosition 
+              ? `${(predictedPosition[0] / SCALE_FACTOR).toFixed(0)}, ${(predictedPosition[1] / SCALE_FACTOR).toFixed(0)}, ${(predictedPosition[2] / SCALE_FACTOR).toFixed(0)}`
+              : 'N/A'
+            }
+          </span>
+        </div>
+        <div className="info-item">
+          <label>Visualization:</label>
+          <span>🟠 Orange dot = Real-time satellite<br/>🟢 Green line = Complete orbit path<br/>🔴 Red lines = Ground-to-satellite measurements</span>
+        </div>
+      </div>
+      
+      <button 
+        className="clear-button"
+        onClick={onClearMeasuredPath}
+      >
+        Clear Measured Path
+      </button>
+    </div>
+  );
+};
+
+// Main OrbitTracker component
+const OrbitTracker = () => {
+  const [status, setStatus] = useState('Initializing');
+  const [predictedPosition, setPredictedPosition] = useState(null);
+  const [measuredPosition, setMeasuredPosition] = useState(null);
+  const [measuredPositions, setMeasuredPositions] = useState([]);
+  const [satelliteObj, setSatelliteObj] = useState(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Initialize satellite object from TLE
+  useEffect(() => {
+    try {
+      const sat = satellite.twoline2satrec(TLE_LINE1, TLE_LINE2);
+      setSatelliteObj(sat);
+      setStatus('Tracking Active');
+    } catch (error) {
+      console.error('Error initializing satellite:', error);
+      setStatus('Error: Invalid TLE data');
+    }
+  }, []);
+
+  // Update satellite position with proper coordinate conversion
+  useEffect(() => {
+    if (!satelliteObj) return;
+
+    const updatePosition = () => {
+      try {
+        const now = new Date();
+        setCurrentTime(now);
+        
+        const positionAndVelocity = satellite.propagate(satelliteObj, now);
+        
+        if (positionAndVelocity.position && !positionAndVelocity.position.error) {
+          // Convert ECI coordinates to our visualization coordinate system
+          const cartesianPos = convertEciToCartesian(positionAndVelocity.position);
+          setPredictedPosition(cartesianPos);
+
+          // Simulate measured position with realistic noise (scaled appropriately)
+          const noise = [
+            (Math.random() - 0.5) * 0.1, // Much smaller noise for realistic scale
+            (Math.random() - 0.5) * 0.1,
+            (Math.random() - 0.5) * 0.1
+          ];
+          const measuredPos = [
+            cartesianPos[0] + noise[0],
+            cartesianPos[1] + noise[1],
+            cartesianPos[2] + noise[2]
+          ];
+          
+          setMeasuredPosition(measuredPos);
+          
+          // Keep only last 100 measured positions for performance
+          setMeasuredPositions(prev => {
+            const newPositions = [...prev, measuredPos];
+            return newPositions.length > 100 ? newPositions.slice(-100) : newPositions;
+          });
+        } else {
+          console.warn('Invalid satellite position data');
+          setStatus('Warning: Position calculation error');
+        }
+      } catch (error) {
+        console.error('Error updating position:', error);
+        setStatus('Error: Propagation failed');
+      }
+    };
+
+    // Update every 100ms (10 Hz) for very visible movement
+    const interval = setInterval(updatePosition, 100);
+    updatePosition(); // Initial update
+
+    return () => clearInterval(interval);
+  }, [satelliteObj]);
+
+  const clearMeasuredPath = () => {
+    setMeasuredPositions([]);
+    setMeasuredPosition(null);
+  };
+
+  return (
+    <div className="orbit-tracker">
+      <div className="header">
+        <h1>Real-Time Satellite Orbit Tracking (TLE Based)</h1>
+      </div>
+      
+      <div className="main-content">
+        <ControlPanel
+          status={status}
+          predictedPosition={predictedPosition}
+          measuredPosition={measuredPosition}
+          onClearMeasuredPath={clearMeasuredPath}
+        />
+        
+        <Scene3D
+          predictedPosition={predictedPosition}
+          measuredPositions={measuredPositions}
+          satelliteRec={satelliteObj}
+          currentTime={currentTime}
+        />
+      </div>
+    </div>
+  );
+};
+
+export default OrbitTracker;
 
