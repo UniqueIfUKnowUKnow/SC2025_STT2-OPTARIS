@@ -13,6 +13,7 @@
 #define BAUD_RATE 115200
 
 // Necessary CPP libraries to communicate and control the movements simultaneously:
+#undef abs
 #include <chrono>
 #include <thread>
 
@@ -28,8 +29,9 @@ const int ENABLE_PIN = 4;  // Digital pin connected to DRV8825 EN pin (LOW to en
 
 // Define the number of steps per revolution for the motor
 // Most common NEMA 17 motors are 50 steps/revolution for full step mode// If the motor is 1.8 degrees per step, then 360 / 1.8 = 50 steps
-const int STEPS_PER_REVOLUTION = 6400*3 ; // with full 1/32 microstepping -> 32 steps per 1.8 degrees
+const int STEPS_PER_REVOLUTION = (6400*1.5)-400; // with full 1/32 microstepping -> 32 steps per 1.8 degrees
                                           // Therefore for 90 degrees -> 1600 steps
+                                          // actually 9200 with all 3 Microstepping pins connected to HIGH makes 360 degree turn -> 1/46
 
 Stepper myStepper(STEPS_PER_REVOLUTION, STEP_PIN, DIR_PIN);
 //==================================================================================================================================================================
@@ -45,8 +47,6 @@ Stepper myStepper(STEPS_PER_REVOLUTION, STEP_PIN, DIR_PIN);
 Servo myServo;
 
 const int SERVO_PIN = 9;
-
-//int pos = 0;
 
 int starting_pos = 0;
 int current_pos = 0;
@@ -78,134 +78,109 @@ public:
 
 dataExtract data_extractor;
 
-void makeMovements()
-{
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    
-    // do-while loop for upward tilting
-    do 
-    {
-        // Rotating clockwise
-        myStepper.step(STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
-        //delay(30);
-        delay(10);
 
-        while(current_pos < starting_pos + 2)
-        {
-            // Tilting up
-            myServo.write(current_pos);
-            //delay(15);
-            delay(5);
-            current_pos += 1;
+// Non-blocking states and variables for movements
+enum MovementState {
+    MOVING_UP_CW,
+    MOVING_UP_CCW,
+    MOVING_DOWN_CW,
+    MOVING_DOWN_CCW,
+    STOPPED
+};
+
+MovementState currentMovementState = STOPPED;
+
+unsigned long lastStepTime = 0;
+unsigned long stepInterval = 10; // Stepper motor step delay in milliseconds
+
+void nonBlockingMovements() {
+    if (currentMovementState == STOPPED) {
+        if (starting_pos < 70) {
+            currentMovementState = MOVING_UP_CW;
+        } else if (starting_pos >= 70 && current_pos > 0) {
+            currentMovementState = MOVING_DOWN_CW;
         }
-        starting_pos += 2;
-
-        // Rotating counter-clockwise
-        myStepper.step(-STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
-        // delay(30);
-        delay(10);
-
-        while(current_pos < starting_pos + 2)
-        {
-            // Tilting up
-            myServo.write(current_pos);
-            // delay(15);
-            delay(5);
-            current_pos += 1;
-        }
-        starting_pos += 2;
     }
-    while(starting_pos < 70);
 
-
-    // do-while loop for downward tilting
-    do 
-    {
-        // Rotating Clockwise
-        myStepper.step(STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
-        // delay(30);
-        delay(10);
-
-        while(current_pos > starting_pos + 2)
-        {
-            // Tilting down
-            myServo.write(current_pos);
-            // delay(15);
-            delay(5);
-            current_pos -= 1;
-        }
-        starting_pos -= 2;
-
-        // Rotating counter-clockwise
-        myStepper.step(-STEPS_PER_REVOLUTION); // Makes a full revolution clockwise
-        // delay(30);
-        delay(10);
-
-        while(current_pos > starting_pos + 2)
-        {
-            // Tilting down
-            myServo.write(current_pos);
-            // delay(15);
-            delay(5);
-            current_pos -= 1;
-        }
-        starting_pos -= 2;
+    if (millis() - lastStepTime < stepInterval) {
+        return; // Wait for the next step interval
     }
-    while(starting_pos > 0);
+    lastStepTime = millis();
+
+    switch (currentMovementState) {
+        case MOVING_UP_CW:
+            myStepper.step(STEPS_PER_REVOLUTION); // Rotate clockwise
+            if (current_pos < starting_pos + 2) {
+                myServo.write(current_pos);
+                current_pos++;
+            } else {
+                starting_pos += 2;
+                currentMovementState = MOVING_UP_CCW;
+            }
+            break;
+
+        case MOVING_UP_CCW:
+            myStepper.step(-STEPS_PER_REVOLUTION); // Rotate counter-clockwise
+            if (current_pos < starting_pos + 2) {
+                myServo.write(current_pos);
+                current_pos++;
+            } else {
+                starting_pos += 2;
+                if (starting_pos >= 70) {
+                    currentMovementState = STOPPED;
+                } else {
+                    currentMovementState = MOVING_UP_CW;
+                }
+            }
+            break;
+
+        case MOVING_DOWN_CW:
+            myStepper.step(STEPS_PER_REVOLUTION); // Rotate clockwise
+            if (current_pos > starting_pos + 2) {
+                myServo.write(current_pos);
+                current_pos--;
+            } else {
+                starting_pos -= 2;
+                currentMovementState = MOVING_DOWN_CCW;
+            }
+            break;
+
+        case MOVING_DOWN_CCW:
+            myStepper.step(-STEPS_PER_REVOLUTION); // Rotate counter-clockwise
+            if (current_pos > starting_pos + 2) {
+                myServo.write(current_pos);
+                current_pos--;
+            } else {
+                starting_pos -= 2;
+                if (starting_pos <= 0) {
+                    currentMovementState = STOPPED;
+                } else {
+                    currentMovementState = MOVING_DOWN_CW;
+                }
+            }
+            break;
+
+        case STOPPED:
+            // Do nothing or check for a new command
+            break;
+    }
 }
+
+
+unsigned long lastSerialTime = 0;
+unsigned long serialInterval = 10; // Check for serial data every 10 milliseconds
 
 void communicateWithRaspberryPi()
 {
-    auto last_execution_time = std::chrono::high_resolution_clock::now();
-    auto delay = std::chrono::milliseconds(10);
-
-    auto start_time = std::chrono::high_resolution_clock::now();
-    while (std::chrono::high_resolution_clock::now() - start_time < std::chrono::seconds(1)) 
-    {
-        auto current_time = std::chrono::high_resolution_clock::now();
-        auto elapsed_time = current_time - last_execution_time;
-
-        if (elapsed_time >= delay) 
-        {
-            if (Serial.available() > 0) {
-                String receivedStringArduino = Serial.readStringUntil('\n');
-                receivedStringArduino.trim(); 
-
-                std::string receivedStdString(receivedStringArduino.c_str());
-
-                int received_5_digit_number = std::stoi(receivedStdString);
-                
-                int number_to_send_arduino_to_pi = 8820700; // Example number to send back to Raspberry Pi
-
-                std::string string_to_send = std::to_string(number_to_send_arduino_to_pi);
-                
-                char largeNumberCharBuffer[9]; 
-                sprintf(largeNumberCharBuffer, "%08d", number_to_send_arduino_to_pi);
-                
-                String largeNumberString = String(largeNumberCharBuffer);
-
-                Serial.print(largeNumberString);
-
-                dataExtract::ExtractedNumbers extracted_on_arduino = data_extractor.extractDigits(largeNumberString.c_str());
-            }
-            
-            last_execution_time = current_time;
-        }
-    }
-    
     if (Serial.available() > 0) {
         String receivedStringArduino = Serial.readStringUntil('\n');
-        receivedStringArduino.trim(); 
+        receivedStringArduino.trim();
 
         std::string receivedStdString(receivedStringArduino.c_str());
-
-        int received_5_digit_number = std::stoi(receivedStdString);
         
         int number_to_send_arduino_to_pi = 8820700; // Example number to send back to Raspberry Pi
 
-        std::string string_to_send = std::to_string(number_to_send_arduino_to_pi);
-        
-        char largeNumberCharBuffer[9]; 
+        char largeNumberCharBuffer[9];
         sprintf(largeNumberCharBuffer, "%08d", number_to_send_arduino_to_pi);
         
         String largeNumberString = String(largeNumberCharBuffer);
@@ -214,7 +189,6 @@ void communicateWithRaspberryPi()
 
         dataExtract::ExtractedNumbers extracted_on_arduino = data_extractor.extractDigits(largeNumberString.c_str());
     }
-    else continue;
 }
 
 void setup() {
@@ -234,11 +208,10 @@ void setup() {
 }
 
 void loop() {
-    // Create and run the two methods on separate threads
-    std::thread movement_thread(makeMovements);
-    std::thread timer_thread(communicateWithRaspberryPi);
-
-    // Wait for both threads to finish
-    movement_thread.join();
-    timer_thread.join();
+    nonBlockingMovements();
+    
+    if (millis() - lastSerialTime >= serialInterval) {
+        communicateWithRaspberryPi();
+        lastSerialTime = millis();
+    }
 }
