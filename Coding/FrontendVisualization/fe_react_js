@@ -282,7 +282,7 @@ const ControlPanel = ({
         </div>
         <div className="info-item">
           <label>Visualization:</label>
-          <span>рџџ  Orange dot = Real-time satellite<br/>рџџў Green line = Complete orbit path<br/>рџ”ґ Red dots = Measurement trail</span>
+          <span>🟠 Orange dot = Real-time satellite<br/>🟢 Green line = Complete orbit path<br/>🔴 Red dots = Measurement trail</span>
         </div>
       </div>
       
@@ -400,4 +400,3 @@ const OrbitTracker = () => {
 };
 
 export default OrbitTracker;
-
