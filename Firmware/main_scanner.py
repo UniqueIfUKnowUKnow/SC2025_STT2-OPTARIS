@@ -61,53 +61,66 @@ def main():
         # 1. CALIBRATION PHASE
         # =================================================================
         while current_state == "CALIBRATING":
-            # --- Interleaved Motor Control ---
-            GPIO.output(STEP_PIN, GPIO.HIGH)
-            time.sleep(STEPPER_PULSE_DELAY)
-            GPIO.output(STEP_PIN, GPIO.LOW)
-            time.sleep(STEPPER_PULSE_DELAY)
-            stepper_steps_taken += 1
-
-            if time.time() - last_servo_update > SERVO_UPDATE_INTERVAL:
-                last_servo_update = time.time()
-                if servo_direction_up:
-                    servo_angle += 1
-                    if servo_angle >= SERVO_SWEEP_END: servo_direction_up = False
+            # --- Perform one complete 180-degree stepper sweep ---
+            while stepper_steps_taken < STEPS_FOR_SWEEP:
+                GPIO.output(STEP_PIN, GPIO.HIGH)
+                time.sleep(STEPPER_PULSE_DELAY)
+                GPIO.output(STEP_PIN, GPIO.LOW)
+                time.sleep(STEPPER_PULSE_DELAY)
+                stepper_steps_taken += 1
+                
+                # --- Collect LiDAR Data during sweep ---
+                try:
+                    distance = lidar_data_queue.get_nowait()
+                    if distance > 0:  # Only store valid readings
+                        # Calculate current stepper angle
+                        angle_offset = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
+                        current_stepper_angle = angle_offset if stepper_direction_cw else STEPPER_SWEEP_DEGREES - angle_offset
+                        
+                        # Store calibration data with positions
+                        calibration_data_point = {
+                            'distance': distance,
+                            'stepper_angle': current_stepper_angle,
+                            'servo_angle': servo_angle,
+                            'stepper_direction_cw': stepper_direction_cw
+                        }
+                        calibration_distances.append(calibration_data_point)
+                except queue.Empty:
+                    pass
+            
+            # --- End of sweep reached ---
+            stepper_steps_taken = 0
+            sweeps_completed += 1
+            print(f"Calibration sweep {sweeps_completed} completed at servo angle {servo_angle}°")
+            
+            # --- Move servo up by 2 degrees for next sweep ---
+            servo_angle += 2
+            set_servo_angle(pi, servo_angle)
+            time.sleep(0.1)  # Brief pause for servo to settle
+            
+            # --- Reverse stepper direction for next sweep ---
+            stepper_direction_cw = not stepper_direction_cw
+            GPIO.output(DIR_PIN, GPIO.HIGH if stepper_direction_cw else GPIO.LOW)
+            
+            # --- Check if calibration is complete ---
+            if servo_angle > SERVO_SWEEP_END:
+                if calibration_distances:
+                    # Calculate average distance from all collected data
+                    all_distances = [point['distance'] for point in calibration_distances]
+                    average_distance = statistics.mean(all_distances)
+                    
+                    print("\n" + "="*40)
+                    print("CALIBRATION COMPLETE")
+                    print(f"Total data points collected: {len(calibration_distances)}")
+                    print(f"Average Background Distance: {average_distance:.2f} cm")
+                    print(f"Servo range covered: {SERVO_SWEEP_START}° to {servo_angle-2}°")
+                    print("="*40 + "\n")
+                    
+                    current_state = states[1]
+                    print(f"Current State: {current_state}")
                 else:
-                    servo_angle -= 1
-                    if servo_angle <= SERVO_SWEEP_START: servo_direction_up = True
-                set_servo_angle(pi, servo_angle)
-
-            # --- LiDAR Data Collection ---
-            try:
-                distance = lidar_data_queue.get_nowait()
-                calibration_distances.append(distance)
-            except queue.Empty:
-                pass
-
-            # --- State Transition Logic ---
-            if stepper_steps_taken >= STEPS_FOR_SWEEP:
-                stepper_steps_taken = 0
-                stepper_direction_cw = not stepper_direction_cw
-                GPIO.output(DIR_PIN, GPIO.HIGH if stepper_direction_cw else GPIO.LOW)
-                sweeps_completed += 0.5
-                print(f"Calibration sweep {int(sweeps_completed * 2)} of {CALIBRATION_SWEEPS * 2} halfs completed...")
-
-                if sweeps_completed >= CALIBRATION_SWEEPS:
-                    if calibration_distances:
-                        average_distance = statistics.mean(calibration_distances)
-                        print("\n" + "="*30)
-                        print("CALIBRATION COMPLETE")
-                        print(f"Average Background Distance: {average_distance:.2f} cm")
-                        print("="*30 + "\n")
-                        current_state = states[1]
-                        print(f"Current State: {current_state}")
-                    else:
-                        print("Calibration Failed: No LiDAR data collected.")
-                        current_state = "FINISHED"
-        
-        # Reset stepper state for the next phase
-        stepper_steps_taken = 0
+                    print("Calibration Failed: No LiDAR data collected.")
+                    current_state = "FINISHED"
         
         # =================================================================
         # 2. INITIAL SCAN PHASE
