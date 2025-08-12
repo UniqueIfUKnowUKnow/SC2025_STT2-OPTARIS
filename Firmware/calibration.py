@@ -72,9 +72,7 @@ def calibrate_environment(pi, lidar_data_queue):
                 calibration_data.append([distance, current_azimuth, elevation])
             except queue.Empty:
                 pass
-            
-            # Small delay for data collection stability
-            time.sleep(0.001)
+        
     
     # Return motors to starting position [0,0]
     print("Returning motors to starting position [0,0]...")
