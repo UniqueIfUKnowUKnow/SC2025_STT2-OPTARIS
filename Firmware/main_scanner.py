@@ -10,13 +10,6 @@ from lidar_reader import LidarReader
 from constants import *
 from stepper_setup import setup_stepper_gpio
 
-# Create the queue
-lidar_data_queue = queue.Queue()
-
-# Create and start the thread
-lidar_thread = LidarReader('/dev/ttyS0', 115200, lidar_data_queue)
-lidar_thread.start()
-
 # --- Setup and Control Functions ---
 
 def set_servo_angle(pi, angle):
