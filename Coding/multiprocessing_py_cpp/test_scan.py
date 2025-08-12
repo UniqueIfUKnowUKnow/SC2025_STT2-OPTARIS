@@ -39,13 +39,15 @@ MIN_PULSE_WIDTH = 500
 MAX_PULSE_WIDTH = 2500
 
 # --- Stepper Sweep Settings ---
-SWEEP_RANGE_DEGREES = 40
+# --- CHANGE: Reverted to a 20-degree sweep range. ---
+SWEEP_RANGE_DEGREES = 20
 STEPS_FOR_SWEEP = int((SWEEP_RANGE_DEGREES / 360.0) * STEPS_PER_REVOLUTION)
 
 # --- Calibration & Detection Settings ---
 CALIBRATION_SWEEPS = 2
-# An object is "significant" if it's 20% closer than the average.
 DETECTION_THRESHOLD_FACTOR = 0.8
+# --- FIX: Added a confidence threshold to prevent false positives. ---
+DETECTION_CONFIDENCE_THRESHOLD = 5
 
 # --- LiDAR Reader Thread ---
 class LidarReader(threading.Thread):
@@ -130,6 +132,7 @@ def main():
     calibration_distances = []
     sweeps_completed = 0
     average_distance = 0
+    consecutive_detections = 0
 
     try:
         # =================================================================
@@ -171,6 +174,10 @@ def main():
         # Reset stepper state for the next phase
         stepper_steps_taken = 0
         
+        # --- FIX: Clear the LiDAR data queue before starting the scan. ---
+        with lidar_data_queue.mutex:
+            lidar_data_queue.queue.clear()
+        
         # =================================================================
         # 2. INITIAL SCAN PHASE
         # =================================================================
@@ -185,13 +192,23 @@ def main():
             try:
                 distance = lidar_data_queue.get_nowait()
                 
-                # Compare current distance to the calibrated average
                 if distance < (average_distance * DETECTION_THRESHOLD_FACTOR):
-                    # Calculate the stepper's current angle within the sweep
-                    # Note: This is a simplified angle relative to the sweep start.
-                    # 160 is the starting angle of the 40-degree sweep (180 - 40/2).
+                    consecutive_detections += 1
+                else:
+                    consecutive_detections = 0
+
+                if consecutive_detections >= DETECTION_CONFIDENCE_THRESHOLD:
+                    # --- CHANGE: Corrected angle calculation for 170-190 degree sweep. ---
+                    # The center is 180 degrees. The sweep is +/- 10 degrees from center.
+                    center_angle = 180
+                    half_sweep = SWEEP_RANGE_DEGREES / 2.0
                     angle_offset = (stepper_steps_taken / STEPS_FOR_SWEEP) * SWEEP_RANGE_DEGREES
-                    current_stepper_angle = 160 + angle_offset if stepper_direction_cw else 200 - angle_offset
+                    
+                    # Calculate angle based on direction from the sweep's starting edge.
+                    if stepper_direction_cw:
+                        current_stepper_angle = (center_angle - half_sweep) + angle_offset
+                    else:
+                        current_stepper_angle = (center_angle + half_sweep) - angle_offset
 
                     print("\n" + "="*40)
                     print(f"TARGET DETECTED!")
@@ -209,6 +226,7 @@ def main():
                 stepper_steps_taken = 0
                 stepper_direction_cw = not stepper_direction_cw
                 GPIO.output(DIR_PIN, GPIO.HIGH if stepper_direction_cw else GPIO.LOW)
+                consecutive_detections = 0
 
         print("Scanning complete.")
 
