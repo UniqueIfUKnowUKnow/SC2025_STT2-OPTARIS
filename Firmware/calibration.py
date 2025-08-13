@@ -89,8 +89,9 @@ def calibrate_environment(pi, lidar_data_queue):
                 # Collect LiDAR data if available
                 try:
                     distance = lidar_data_queue.get_nowait()
-                    if nearest_azimuth in azimuth_readings:
-                        azimuth_readings[nearest_azimuth].append(distance)
+                    if distance < SENSOR_MAX:
+                        if nearest_azimuth in azimuth_readings:
+                            azimuth_readings[nearest_azimuth].append(distance)
                 except queue.Empty:
                     pass
                     
@@ -121,7 +122,7 @@ def calibrate_environment(pi, lidar_data_queue):
                 # Collect LiDAR data if available
                 try:
                     distance = lidar_data_queue.get_nowait()
-                    if distance < 1200:
+                    if distance < SENSOR_MAX:
                         if nearest_azimuth in azimuth_readings:
                             azimuth_readings[nearest_azimuth].append(distance)
                 except queue.Empty:

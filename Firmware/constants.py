@@ -31,6 +31,7 @@ SERVO_SWEEP_END = 90
 # --- Calibration & Detection Settings ---
 CALIBRATION_SWEEPS = 2
 DETECTION_THRESHOLD_FACTOR = 0.8
+SENSOR_MAX = 1300
 # --- FIX: New constant to require multiple consecutive detections. ---
 # This prevents false positives from single noisy readings.
 DETECTION_CONFIDENCE_THRESHOLD = 5
