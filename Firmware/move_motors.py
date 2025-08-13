@@ -20,6 +20,7 @@ def reset_stepper_pos(stepper_steps_taken):
             GPIO.output(STEP_PIN, GPIO.LOW)
             time.sleep(STEPPER_PULSE_DELAY)
     GPIO.output(DIR_PIN, GPIO.HIGH)
+    print("Stepper pos reset and dir pin set to HIGH")
 
 def stepper_step():
     GPIO.output(STEP_PIN, GPIO.HIGH)
