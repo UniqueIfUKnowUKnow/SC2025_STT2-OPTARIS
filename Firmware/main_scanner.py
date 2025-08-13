@@ -112,7 +112,7 @@ def main():
         #         GPIO.output(DIR_PIN, GPIO.HIGH if stepper_direction_cw else GPIO.LOW)
 
         print("Scanning complete.")
-
+        save_calibration_data(calibration_data)
     except KeyboardInterrupt:
         print("\nProgram stopped by user.")
     finally:
