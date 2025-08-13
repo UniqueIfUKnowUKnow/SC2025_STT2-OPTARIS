@@ -55,16 +55,21 @@ def calibrate_environment(pi, lidar_data_queue):
         
         # Perform 180-degree stepper sweep
         while stepper_steps_taken < STEPS_FOR_SWEEP:
+            
             if elevation % 4 == 0: 
                 GPIO.output(DIR_PIN, GPIO.HIGH)
+                stepper_steps_taken += 1
+                current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
             else:
                 GPIO.output(DIR_PIN, GPIO.LOW)
+                stepper_steps_taken -= 1
+                current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
             # Step the stepper motor
             GPIO.output(STEP_PIN, GPIO.HIGH)
             time.sleep(STEPPER_PULSE_DELAY)
             GPIO.output(STEP_PIN, GPIO.LOW)
             time.sleep(STEPPER_PULSE_DELAY)
-            stepper_steps_taken += 1
+            
             
             # Calculate current azimuth position
             current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
