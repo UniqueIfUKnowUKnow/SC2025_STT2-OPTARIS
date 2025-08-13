@@ -1,0 +1,196 @@
+{
+  "timestamp": "20250813_132850",
+  "total_measurements": 38,
+  "measurements": [
+    {
+      "distance_cm": 57,
+      "azimuth_deg": 0,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 57,
+      "azimuth_deg": 2,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 142.6,
+      "azimuth_deg": 4,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 145.7,
+      "azimuth_deg": 6,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 150,
+      "azimuth_deg": 8,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 152,
+      "azimuth_deg": 12,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 154,
+      "azimuth_deg": 16,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 157,
+      "azimuth_deg": 18,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 161,
+      "azimuth_deg": 22,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 165,
+      "azimuth_deg": 26,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 172,
+      "azimuth_deg": 28,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 179,
+      "azimuth_deg": 32,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 186,
+      "azimuth_deg": 36,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 192,
+      "azimuth_deg": 38,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 199,
+      "azimuth_deg": 42,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 213,
+      "azimuth_deg": 46,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 226,
+      "azimuth_deg": 48,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 243,
+      "azimuth_deg": 52,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 268,
+      "azimuth_deg": 56,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 292,
+      "azimuth_deg": 58,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 316,
+      "azimuth_deg": 62,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 315,
+      "azimuth_deg": 66,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 308,
+      "azimuth_deg": 68,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 302,
+      "azimuth_deg": 72,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 296,
+      "azimuth_deg": 76,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 293,
+      "azimuth_deg": 78,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 326,
+      "azimuth_deg": 82,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 339,
+      "azimuth_deg": 86,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 352,
+      "azimuth_deg": 88,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 353,
+      "azimuth_deg": 92,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 354,
+      "azimuth_deg": 96,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 354,
+      "azimuth_deg": 98,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 355,
+      "azimuth_deg": 102,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 356,
+      "azimuth_deg": 106,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 357,
+      "azimuth_deg": 108,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 356,
+      "azimuth_deg": 112,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 355,
+      "azimuth_deg": 116,
+      "elevation_deg": 32
+    },
+    {
+      "distance_cm": 355,
+      "azimuth_deg": 118,
+      "elevation_deg": 32
+    }
+  ]
+}
