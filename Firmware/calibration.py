@@ -4,7 +4,6 @@ import pigpio            # For stable, hardware-based PWM for the servo
 import time              # For creating delays
 import threading         # To run the LiDAR reader in the background
 import queue             # For thread-safe data sharing between threads
-import statistics        # For easily calculating the average distance
 import csv               # For saving data to CSV files
 import json              # For saving data to JSON files
 from lidar_reader import LidarReader
@@ -20,10 +19,10 @@ def calibrate_environment(pi, lidar_data_queue):
     Performs systematic calibration by sweeping stepper motor through 180 degrees,
     then incrementing servo by 2 degrees and repeating. Collects distance data
     with corresponding azimuth and elevation positions, averaging readings for
-    each 2-degree azimuth increment.
+    each 0.5-degree azimuth increment.
     
     Returns:
-        list: Array of [average_distance, azimuth, elevation] measurements at 2-degree increments
+        list: Array of [average_distance, azimuth, elevation] measurements at 0.5-degree increments
     """
     print("Starting calibration...")
     
@@ -47,8 +46,8 @@ def calibrate_environment(pi, lidar_data_queue):
     # Calculate servo range
     elevation_positions = list(range(SERVO_SWEEP_START, SERVO_SWEEP_END, 2))
     
-    # Calculate azimuth increments
-    azimuth_increments = list(range(0, (STEPPER_SWEEP_DEGREES+1), 2))
+    # Calculate azimuth increments - changed from 2 to 0.5 degrees
+    azimuth_increments = [round(x * 0.5, 1) for x in range(0, int((STEPPER_SWEEP_DEGREES/0.5)+1))]
     stepper_steps_taken = 0
     
     for elevation in elevation_positions:
@@ -81,10 +80,10 @@ def calibrate_environment(pi, lidar_data_queue):
                 # Update physical position
                 current_physical_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
                 
-                # Find the nearest 2-degree increment
-                nearest_azimuth = round(current_physical_azimuth / 2) * 2
+                # Find the nearest 0.5-degree increment
+                nearest_azimuth = round(current_physical_azimuth / 0.5) * 0.5
                 if nearest_azimuth > 360:
-                    nearest_azimuth = 360
+                    nearest_azimuth = 360.0
 
                 # Collect LiDAR data if available
                 try:
@@ -114,10 +113,10 @@ def calibrate_environment(pi, lidar_data_queue):
                 # Update physical position
                 current_physical_azimuth = 360 - (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
                 
-                # Find the nearest 2-degree increment
-                nearest_azimuth = round(current_physical_azimuth / 2) * 2
+                # Find the nearest 0.5-degree increment
+                nearest_azimuth = round(current_physical_azimuth / 0.5) * 0.5
                 if nearest_azimuth < 0:
-                    nearest_azimuth = 0
+                    nearest_azimuth = 0.0
                 
                 # Collect LiDAR data if available
                 try:
@@ -134,15 +133,16 @@ def calibrate_environment(pi, lidar_data_queue):
             if readings:  # Only store if we have readings for this position
                 # Calculate average distance, filtering out obvious outliers
                 if len(readings) > 3:
-                    mean_dist = statistics.mean(readings)
-                    stdev_dist = statistics.stdev(readings)
+                    mean_dist = sum(readings) / len(readings)
+                    variance = sum((x - mean_dist) ** 2 for x in readings) / len(readings)
+                    stdev_dist = variance ** 0.5
                     filtered_readings = [r for r in readings if abs(r - mean_dist) <= 2 * stdev_dist]
                     if filtered_readings:
-                        average_distance = statistics.mean(filtered_readings)
+                        average_distance = sum(filtered_readings) / len(filtered_readings)
                     else:
                         average_distance = mean_dist
                 else:
-                    average_distance = statistics.mean(readings)
+                    average_distance = sum(readings) / len(readings)
                 
                 # Store measurement with averaged distance and exact position
                 
@@ -179,27 +179,7 @@ def save_calibration_data(calibration_data):
             writer = csv.writer(csvfile)
             writer.writerow(['Distance_cm', 'Azimuth_deg', 'Elevation_deg'])  # Header
             for row in calibration_data:
-                writer.writerow([f"{row[0]:.1f}", row[1], row[2]])
+                writer.writerow([f"{row[0]:.1f}", f"{row[1]:.1f}", row[2]])
         print(f"✓ CSV data saved to: {csv_filename}")
     except Exception as e:
         print(f"✗ Error saving CSV: {e}")
-    # 2. Save as JSON file (good for programmatic access)
-    json_filename = f"lidar_calibration_{timestamp}.json"
-    try:
-        json_data = {
-            "timestamp": timestamp,
-            "total_measurements": len(calibration_data),
-            "measurements": [
-                {
-                    "distance_cm": round(row[0], 1),
-                    "azimuth_deg": row[1],
-                    "elevation_deg": row[2]
-                }
-                for row in calibration_data
-            ]
-        }
-        with open(json_filename, 'w') as jsonfile:
-            json.dump(json_data, jsonfile, indent=2)
-        print(f"✓ JSON data saved to: {json_filename}")
-    except Exception as e:
-        print(f"✗ Error saving JSON: {e}")
