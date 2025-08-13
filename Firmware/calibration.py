@@ -47,7 +47,6 @@ def calibrate_environment(pi, lidar_data_queue):
     # Calculate servo range: 0 to 140 degrees in 2-degree increments
     elevation_positions = list(range(SERVO_SWEEP_START, SERVO_SWEEP_END, 2))  # [+0, +2, +4, ..., 160]
     stepper_steps_taken = 0
-    current_azimuth = 0
     
     # Calculate steps per 2-degree azimuth increment
     steps_per_2_degrees = int((2.0 / STEPPER_SWEEP_DEGREES) * STEPS_FOR_SWEEP)
@@ -62,11 +61,10 @@ def calibrate_environment(pi, lidar_data_queue):
         
         # Dictionary to collect readings for each azimuth position
         azimuth_readings = {azimuth: [] for azimuth in azimuth_increments}
-        
+
         # Perform 180-degree stepper sweep
         if elevation % 4 == 0: 
-            GPIO.output(DIR_PIN, GPIO.HIGH)
-            stepper_steps_taken = 0
+            GPIO.output(DIR_PIN, GPIO.HIGH)     
             
             while stepper_steps_taken < STEPS_FOR_SWEEP:
                 stepper_steps_taken += 1
@@ -95,7 +93,6 @@ def calibrate_environment(pi, lidar_data_queue):
                     
         else:  # Reverse direction sweep
             GPIO.output(DIR_PIN, GPIO.LOW)
-            stepper_steps_taken = STEPS_FOR_SWEEP
             
             while stepper_steps_taken > 0:
                 stepper_steps_taken -= 1
