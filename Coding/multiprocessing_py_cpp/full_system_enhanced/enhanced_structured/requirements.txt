@@ -1,0 +1,4 @@
+pigpio==1.78
+pyserial==3.5
+RPi.GPIO==0.7.1
+keyboard==0.13.5
