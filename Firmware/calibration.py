@@ -49,6 +49,7 @@ def calibrate_environment(pi, lidar_data_queue):
     
     # Calculate azimuth increments
     azimuth_increments = list(range(0, (STEPPER_SWEEP_DEGREES+1), 2))
+    stepper_steps_taken = 0
     
     for elevation in elevation_positions:
         print(f"Calibrating at elevation: {elevation}°")
@@ -65,9 +66,8 @@ def calibrate_environment(pi, lidar_data_queue):
         
         if sweep_forward:
             
-            stepper_steps_taken = 0
-            print("  Forward sweep")
-
+            print("Forward sweep")
+            reset_stepper_pos(stepper_steps_taken)
             target_steps = STEPS_FOR_SWEEP
             GPIO.output(DIR_PIN, GPIO.HIGH)
             
@@ -95,13 +95,14 @@ def calibrate_environment(pi, lidar_data_queue):
                     
         else:
             
-            stepper_steps_taken = 0
+            
             print("  Reverse sweep")
             # Reverse sweep: move from current position to 0°
-            target_steps = 0
+            reset_stepper_pos(stepper_steps_taken)
+            target_steps = STEPS_FOR_SWEEP
             GPIO.output(DIR_PIN, GPIO.LOW)
             
-            while stepper_steps_taken > target_steps:
+            while stepper_steps_taken < target_steps:
                 stepper_steps_taken += 1
                 
                 # Step the stepper motor
