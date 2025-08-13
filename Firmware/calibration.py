@@ -121,8 +121,9 @@ def calibrate_environment(pi, lidar_data_queue):
                 # Collect LiDAR data if available
                 try:
                     distance = lidar_data_queue.get_nowait()
-                    if nearest_azimuth in azimuth_readings:
-                        azimuth_readings[nearest_azimuth].append(distance)
+                    if distance < 1200:
+                        if nearest_azimuth in azimuth_readings:
+                            azimuth_readings[nearest_azimuth].append(distance)
                 except queue.Empty:
                     pass
         
@@ -143,6 +144,7 @@ def calibrate_environment(pi, lidar_data_queue):
                     average_distance = statistics.mean(readings)
                 
                 # Store measurement with averaged distance and exact position
+                
                 calibration_data.append([average_distance, azimuth, elevation])
                 print(f"  Azimuth {azimuth}°: {len(readings)} readings, avg = {average_distance:.1f}cm")
     
