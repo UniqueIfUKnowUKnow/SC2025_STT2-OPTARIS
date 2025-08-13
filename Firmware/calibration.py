@@ -67,7 +67,7 @@ def calibrate_environment(pi, lidar_data_queue):
                     
                     # Calculate current azimuth position
                     current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
-                    
+                    print (current_azimuth)
                     # Collect LiDAR data if available
                     try:
                         distance = lidar_data_queue.get_nowait()
@@ -88,7 +88,7 @@ def calibrate_environment(pi, lidar_data_queue):
                     
                     # Calculate current azimuth position
                     current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
-                    
+                    print (current_azimuth)
                     # Collect LiDAR data if available
                     try:
                         distance = lidar_data_queue.get_nowait()
