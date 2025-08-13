@@ -84,11 +84,12 @@ def calibrate_environment(pi, lidar_data_queue):
                 nearest_azimuth = round(current_azimuth / 2) * 2
                 if nearest_azimuth > 180:
                     nearest_azimuth = 180
-                
+
                 # Collect LiDAR data if available
                 try:
                     distance = lidar_data_queue.get_nowait()
                     azimuth_readings[nearest_azimuth].append(distance)
+                    print(azimuth_readings)
                 except queue.Empty:
                     pass
                     
@@ -117,6 +118,7 @@ def calibrate_environment(pi, lidar_data_queue):
                 try:
                     distance = lidar_data_queue.get_nowait()
                     azimuth_readings[nearest_azimuth].append(distance)
+                    print(azimuth_readings)
                 except queue.Empty:
                     pass
         
@@ -140,6 +142,7 @@ def calibrate_environment(pi, lidar_data_queue):
                 # Store measurement with averaged distance and exact position
                 calibration_data.append([average_distance, azimuth, elevation])
                 print(f"  Azimuth {azimuth}°: {len(readings)} readings, avg = {average_distance:.1f}cm")
+                print(calibration_data)
     
     # Return motors to starting position [0,0]
     print("Returning motors to starting position [0,0]...")
@@ -155,6 +158,7 @@ def calibrate_environment(pi, lidar_data_queue):
             time.sleep(STEPPER_PULSE_DELAY)
             GPIO.output(STEP_PIN, GPIO.LOW)
             time.sleep(STEPPER_PULSE_DELAY)
+            
     
     # Reset direction for normal operation
     GPIO.output(DIR_PIN, GPIO.HIGH)
