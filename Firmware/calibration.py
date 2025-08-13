@@ -16,10 +16,11 @@ def calibrate_environment(pi, lidar_data_queue):
     """
     Performs systematic calibration by sweeping stepper motor through 180 degrees,
     then incrementing servo by 2 degrees and repeating. Collects distance data
-    with corresponding azimuth and elevation positions.
+    with corresponding azimuth and elevation positions, averaging readings for
+    each 2-degree azimuth increment.
     
     Returns:
-        list: Array of [distance, azimuth, elevation] measurements
+        list: Array of [average_distance, azimuth, elevation] measurements at 2-degree increments
     """
     print("Starting calibration...")
     
@@ -43,6 +44,11 @@ def calibrate_environment(pi, lidar_data_queue):
     elevation_positions = list(range(SERVO_SWEEP_START, SERVO_SWEEP_END, 2))  # [+0, +2, +4, ..., 160]
     stepper_steps_taken = 0
     current_azimuth = 0
+    
+    # Calculate steps per 2-degree azimuth increment
+    steps_per_2_degrees = int((2.0 / STEPPER_SWEEP_DEGREES) * STEPS_FOR_SWEEP)
+    azimuth_increments = list(range(0, 181, 2))  # [0, 2, 4, ..., 180]
+    
     for elevation in elevation_positions:
         print(f"Calibrating at elevation: {elevation}°")
         
@@ -50,53 +56,86 @@ def calibrate_environment(pi, lidar_data_queue):
         set_servo_angle(pi, elevation)
         time.sleep(0.5)  # Allow servo to settle
         
+        # Dictionary to collect readings for each azimuth position
+        azimuth_readings = {azimuth: [] for azimuth in azimuth_increments}
+        
         # Perform 180-degree stepper sweep
         if elevation % 4 == 0: 
             GPIO.output(DIR_PIN, GPIO.HIGH)
+            stepper_steps_taken = 0
+            
             while stepper_steps_taken < STEPS_FOR_SWEEP:
-                    
-                    stepper_steps_taken += 1
-                    current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
+                stepper_steps_taken += 1
                 
-                    # Step the stepper motor
-                    GPIO.output(STEP_PIN, GPIO.HIGH)
-                    time.sleep(STEPPER_PULSE_DELAY)
-                    GPIO.output(STEP_PIN, GPIO.LOW)
-                    time.sleep(STEPPER_PULSE_DELAY)
-                    
-                    # Calculate current azimuth position
-                    current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
-                    print (current_azimuth)
-                    # Collect LiDAR data if available
-                    try:
-                        distance = lidar_data_queue.get_nowait()
-                        # Store measurement with position data
-                        calibration_data.append([distance, current_azimuth, elevation])
-                    except queue.Empty:
-                        pass
-        else:
-            GPIO.output(DIR_PIN, GPIO.LOW)
-            while stepper_steps_taken > 0:
-                
-                stepper_steps_taken -= 1
-                current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
                 # Step the stepper motor
                 GPIO.output(STEP_PIN, GPIO.HIGH)
                 time.sleep(STEPPER_PULSE_DELAY)
                 GPIO.output(STEP_PIN, GPIO.LOW)
                 time.sleep(STEPPER_PULSE_DELAY)
-                    
+                
                 # Calculate current azimuth position
                 current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
-                print (current_azimuth)
+                
+                # Find the nearest 2-degree increment
+                nearest_azimuth = round(current_azimuth / 2) * 2
+                if nearest_azimuth > 180:
+                    nearest_azimuth = 180
+                
                 # Collect LiDAR data if available
                 try:
                     distance = lidar_data_queue.get_nowait()
-                    # Store measurement with position data
-                    calibration_data.append([distance, current_azimuth, elevation])
+                    azimuth_readings[nearest_azimuth].append(distance)
+                except queue.Empty:
+                    pass
+                    
+        else:  # Reverse direction sweep
+            GPIO.output(DIR_PIN, GPIO.LOW)
+            stepper_steps_taken = STEPS_FOR_SWEEP
+            
+            while stepper_steps_taken > 0:
+                stepper_steps_taken -= 1
+                
+                # Step the stepper motor
+                GPIO.output(STEP_PIN, GPIO.HIGH)
+                time.sleep(STEPPER_PULSE_DELAY)
+                GPIO.output(STEP_PIN, GPIO.LOW)
+                time.sleep(STEPPER_PULSE_DELAY)
+                
+                # Calculate current azimuth position
+                current_azimuth = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
+                
+                # Find the nearest 2-degree increment
+                nearest_azimuth = round(current_azimuth / 2) * 2
+                if nearest_azimuth > 180:
+                    nearest_azimuth = 180
+                
+                # Collect LiDAR data if available
+                try:
+                    distance = lidar_data_queue.get_nowait()
+                    azimuth_readings[nearest_azimuth].append(distance)
                 except queue.Empty:
                     pass
         
+        # Process collected readings for this elevation
+        for azimuth in azimuth_increments:
+            readings = azimuth_readings[azimuth]
+            if readings:  # Only store if we have readings for this position
+                # Calculate average distance, filtering out obvious outliers
+                # Remove readings that are more than 2 standard deviations from the mean
+                if len(readings) > 3:
+                    mean_dist = statistics.mean(readings)
+                    stdev_dist = statistics.stdev(readings)
+                    filtered_readings = [r for r in readings if abs(r - mean_dist) <= 2 * stdev_dist]
+                    if filtered_readings:
+                        average_distance = statistics.mean(filtered_readings)
+                    else:
+                        average_distance = mean_dist
+                else:
+                    average_distance = statistics.mean(readings)
+                
+                # Store measurement with averaged distance and exact position
+                calibration_data.append([average_distance, azimuth, elevation])
+                print(f"  Azimuth {azimuth}°: {len(readings)} readings, avg = {average_distance:.1f}cm")
     
     # Return motors to starting position [0,0]
     print("Returning motors to starting position [0,0]...")
@@ -104,18 +143,19 @@ def calibrate_environment(pi, lidar_data_queue):
     # Return servo to 0 degrees
     set_servo_angle(pi, 0)
     
-    # Return stepper to 0 degrees (reverse all steps taken)
-    GPIO.output(DIR_PIN, GPIO.LOW)  # Reverse direction
-    for _ in range(stepper_steps_taken):
-        GPIO.output(STEP_PIN, GPIO.HIGH)
-        time.sleep(STEPPER_PULSE_DELAY)
-        GPIO.output(STEP_PIN, GPIO.LOW)
-        time.sleep(STEPPER_PULSE_DELAY)
+    # Return stepper to 0 degrees (reverse all steps taken if needed)
+    if stepper_steps_taken > 0:
+        GPIO.output(DIR_PIN, GPIO.LOW)  # Reverse direction
+        for _ in range(stepper_steps_taken):
+            GPIO.output(STEP_PIN, GPIO.HIGH)
+            time.sleep(STEPPER_PULSE_DELAY)
+            GPIO.output(STEP_PIN, GPIO.LOW)
+            time.sleep(STEPPER_PULSE_DELAY)
     
     # Reset direction for normal operation
     GPIO.output(DIR_PIN, GPIO.HIGH)
     
-    print(f"Calibration complete! Collected {len(calibration_data)} measurements.")
+    print(f"Calibration complete! Collected {len(calibration_data)} averaged measurements.")
     print("Motors returned to starting position [0,0]")
     
     return calibration_data
