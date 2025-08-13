@@ -9,7 +9,7 @@ import statistics        # For easily calculating the average distance
 from lidar_reader import LidarReader
 from constants import *
 from stepper_setup import setup_stepper_gpio
-from move_servo import *
+from move_motors import *
 from calibration import *
 
 # --- Main Application ---
