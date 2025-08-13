@@ -40,7 +40,7 @@ def calibrate_environment(pi, lidar_data_queue):
     GPIO.output(DIR_PIN, GPIO.HIGH)
     
     # Calculate servo range: 0 to 140 degrees in 2-degree increments
-    elevation_positions = list(range(0, 141, 2))  # [0, 2, 4, ..., 140]
+    elevation_positions = list(range(SERVO_SWEEP_START, SERVO_SWEEP_END, 2))  # [+0, +2, +4, ..., 160]
     
     for elevation in elevation_positions:
         print(f"Calibrating at elevation: {elevation}°")
@@ -55,6 +55,10 @@ def calibrate_environment(pi, lidar_data_queue):
         
         # Perform 180-degree stepper sweep
         while stepper_steps_taken < STEPS_FOR_SWEEP:
+            if elevation % 4 == 0: 
+                GPIO.output(DIR_PIN, GPIO.HIGH)
+            else:
+                GPIO.output(DIR_PIN, GPIO.LOW)
             # Step the stepper motor
             GPIO.output(STEP_PIN, GPIO.HIGH)
             time.sleep(STEPPER_PULSE_DELAY)
