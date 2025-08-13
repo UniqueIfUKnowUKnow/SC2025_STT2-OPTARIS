@@ -37,17 +37,21 @@ STEPS_PER_REVOLUTION = 6400
 STEPPER_PULSE_DELAY = 0.0001
 MIN_PULSE_WIDTH = 500
 MAX_PULSE_WIDTH = 2500
+# --- CHANGE: Added back servo update interval for sweeping motion ---
+SERVO_UPDATE_INTERVAL = 0.01
 
-# --- Stepper Sweep Settings ---
-# --- CHANGE: Stepper motor now sweeps 40 degrees. ---
+# --- Stepper and Servo Sweep Settings ---
 STEPPER_SWEEP_DEGREES = 40
 STEPS_FOR_SWEEP = int((STEPPER_SWEEP_DEGREES / 360.0) * STEPS_PER_REVOLUTION)
+# --- CHANGE: New settings for servo sweep range ---
+SERVO_SWEEP_START = 5
+SERVO_SWEEP_END = 25
+
 
 # --- Calibration & Detection Settings ---
 CALIBRATION_SWEEPS = 2
 DETECTION_THRESHOLD_FACTOR = 0.8
 DETECTION_CONFIDENCE_THRESHOLD = 5
-# --- CHANGE: New goal to find 3 targets before stopping. ---
 TOTAL_DETECTIONS_TO_FIND = 3
 
 # --- LiDAR Reader Thread ---
@@ -120,10 +124,13 @@ def main():
     stepper_direction_cw = True
     GPIO.output(DIR_PIN, GPIO.HIGH)
     
-    # --- CHANGE: Servo is now held constant at 20 degrees. ---
-    constant_servo_angle = 20
-    set_servo_angle(pi, constant_servo_angle)
-    print(f"Servo angle set to {constant_servo_angle} degrees.")
+    # --- CHANGE: Initialize servo for sweeping motion ---
+    servo_angle = SERVO_SWEEP_START
+    servo_direction_up = True
+    set_servo_angle(pi, servo_angle)
+    last_servo_update = time.time()
+    print(f"Servo sweep range set to {SERVO_SWEEP_START}° - {SERVO_SWEEP_END}°.")
+
 
     calibration_distances = []
     sweeps_completed = 0
@@ -138,11 +145,23 @@ def main():
         # 1. CALIBRATION PHASE
         # =================================================================
         while current_state == "CALIBRATING":
+            # --- Interleaved Motor Control ---
             GPIO.output(STEP_PIN, GPIO.HIGH)
             time.sleep(STEPPER_PULSE_DELAY)
             GPIO.output(STEP_PIN, GPIO.LOW)
             time.sleep(STEPPER_PULSE_DELAY)
             stepper_steps_taken += 1
+
+            # --- CHANGE: Added servo sweep logic to calibration loop ---
+            if time.time() - last_servo_update > SERVO_UPDATE_INTERVAL:
+                last_servo_update = time.time()
+                if servo_direction_up:
+                    servo_angle += 1
+                    if servo_angle >= SERVO_SWEEP_END: servo_direction_up = False
+                else:
+                    servo_angle -= 1
+                    if servo_angle <= SERVO_SWEEP_START: servo_direction_up = True
+                set_servo_angle(pi, servo_angle)
 
             try:
                 distance = lidar_data_queue.get_nowait()
@@ -188,6 +207,17 @@ def main():
             time.sleep(STEPPER_PULSE_DELAY)
             stepper_steps_taken += 1
 
+            # --- CHANGE: Added servo sweep logic to detection loop ---
+            if time.time() - last_servo_update > SERVO_UPDATE_INTERVAL:
+                last_servo_update = time.time()
+                if servo_direction_up:
+                    servo_angle += 1
+                    if servo_angle >= SERVO_SWEEP_END: servo_direction_up = False
+                else:
+                    servo_angle -= 1
+                    if servo_angle <= SERVO_SWEEP_START: servo_direction_up = True
+                set_servo_angle(pi, servo_angle)
+
             # --- Detection Logic ---
             try:
                 distance = lidar_data_queue.get_nowait()
@@ -198,7 +228,6 @@ def main():
                     consecutive_detections = 0
 
                 if consecutive_detections >= DETECTION_CONFIDENCE_THRESHOLD:
-                    # --- CHANGE: Angle calculation for 160-200 degree sweep ---
                     center_angle = 180
                     half_sweep = STEPPER_SWEEP_DEGREES / 2.0
                     angle_offset = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
@@ -213,7 +242,8 @@ def main():
                     print(f"TARGET DETECTED! ({detections_found}/{TOTAL_DETECTIONS_TO_FIND})")
                     print(f"  -> Distance: {distance} cm (Average was {average_distance:.2f} cm)")
                     print(f"  -> Stepper Angle: {current_stepper_angle:.1f}°")
-                    print(f"  -> Servo Angle: {constant_servo_angle}°")
+                    # --- CHANGE: Use the current servo angle variable ---
+                    print(f"  -> Servo Angle: {servo_angle}°")
                     print("="*40)
                     
                     # Pause and prepare for the next scan.
