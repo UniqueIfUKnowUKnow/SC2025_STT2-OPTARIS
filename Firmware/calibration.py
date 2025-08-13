@@ -6,10 +6,14 @@ import serial            # For reading data from the LiDAR's serial port
 import threading         # To run the LiDAR reader in the background
 import queue             # For thread-safe data sharing between threads
 import statistics        # For easily calculating the average distance
+import csv               # For saving data to CSV files
+import json              # For saving data to JSON files
 from lidar_reader import LidarReader
 from constants import *
 from stepper_setup import setup_stepper_gpio
 from move_servo import *
+from datetime import datetime
+
 
 
 def calibrate_environment(pi, lidar_data_queue):
@@ -159,3 +163,44 @@ def calibrate_environment(pi, lidar_data_queue):
     print("Motors returned to starting position [0,0]")
     
     return calibration_data
+
+def save_calibration_data(calibration_data):
+    """
+    Save calibration data to multiple file formats with timestamp.
+    
+    Args:
+        calibration_data: List of [distance, azimuth, elevation] measurements
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # 1. Save as CSV file (easy to open in Excel/spreadsheet programs)
+    csv_filename = f"lidar_calibration_{timestamp}.csv"
+    try:
+        with open(csv_filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['Distance_cm', 'Azimuth_deg', 'Elevation_deg'])  # Header
+            for row in calibration_data:
+                writer.writerow([f"{row[0]:.1f}", row[1], row[2]])
+        print(f"✓ CSV data saved to: {csv_filename}")
+    except Exception as e:
+        print(f"✗ Error saving CSV: {e}")
+    # 2. Save as JSON file (good for programmatic access)
+    json_filename = f"lidar_calibration_{timestamp}.json"
+    try:
+        json_data = {
+            "timestamp": timestamp,
+            "total_measurements": len(calibration_data),
+            "measurements": [
+                {
+                    "distance_cm": round(row[0], 1),
+                    "azimuth_deg": row[1],
+                    "elevation_deg": row[2]
+                }
+                for row in calibration_data
+            ]
+        }
+        with open(json_filename, 'w') as jsonfile:
+            json.dump(json_data, jsonfile, indent=2)
+        print(f"✓ JSON data saved to: {json_filename}")
+    except Exception as e:
+        print(f"✗ Error saving JSON: {e}")
