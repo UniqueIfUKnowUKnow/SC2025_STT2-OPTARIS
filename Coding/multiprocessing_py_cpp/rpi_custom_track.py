@@ -16,6 +16,7 @@ import queue
 import statistics
 import math
 from collections import deque
+import numpy as np
 
 # --- Pin & Port Configuration (BCM numbering) ---
 # Stepper Motor Pins
@@ -281,3 +282,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
