@@ -52,67 +52,14 @@ def main():
     consecutive_detections = 0
 
     try:
-        calibration_data = calibrate_environment(pi, lidar_data_queue)
-        print(calibration_data)
-
-        # # =================================================================
-        # # 2. INITIAL SCAN PHASE
-        # # =================================================================
-        # while current_state == "SCANNING":
-        #     # --- Interleaved Motor Control (same as calibration) ---
-        #     GPIO.output(STEP_PIN, GPIO.HIGH)
-        #     time.sleep(STEPPER_PULSE_DELAY)
-        #     GPIO.output(STEP_PIN, GPIO.LOW)
-        #     time.sleep(STEPPER_PULSE_DELAY)
-        #     stepper_steps_taken += 1
-
-        #     if time.time() - last_servo_update > SERVO_UPDATE_INTERVAL:
-        #         last_servo_update = time.time()
-        #         if servo_direction_up:
-        #             servo_angle += 1
-        #             if servo_angle >= SERVO_SWEEP_END: servo_direction_up = False
-        #         else:
-        #             servo_angle -= 1
-        #             if servo_angle <= SERVO_SWEEP_START: servo_direction_up = True
-        #         set_servo_angle(pi, servo_angle)
-
-        #     # --- Detection Logic ---
-        #     try:
-        #         distance = lidar_data_queue.get_nowait()
-                
-        #         # --- FIX: Check for consecutive detections ---
-        #         if distance < (average_distance * DETECTION_THRESHOLD_FACTOR):
-        #             # If the reading is close, increment our confidence counter.
-        #             consecutive_detections += 1
-        #         else:
-        #             # If we get a reading that is far away, reset the counter.
-        #             consecutive_detections = 0
-
-        #         # --- FIX: Only confirm a target if our confidence is high enough. ---
-        #         if consecutive_detections >= DETECTION_CONFIDENCE_THRESHOLD:
-        #             # We have seen enough consecutive close readings to be sure.
-        #             angle_offset = (stepper_steps_taken / STEPS_FOR_SWEEP) * STEPPER_SWEEP_DEGREES
-        #             current_stepper_angle = angle_offset if stepper_direction_cw else STEPPER_SWEEP_DEGREES - angle_offset
-
-        #             print("\n" + "="*40)
-        #             print(f"TARGET DETECTED!")
-        #             print(f"  -> Distance: {distance} cm (Average was {average_distance:.2f} cm)")
-        #             print(f"  -> Stepper Angle: {current_stepper_angle:.1f}°")
-        #             print(f"  -> Servo Angle: {servo_angle}°")
-        #             print("="*40 + "\n")
-        #             current_state = states[2] # Change state to stop the scan
-                    
-        #     except queue.Empty:
-        #         pass
-
-        #     # Reverse direction at the end of the sweep
-        #     if stepper_steps_taken >= STEPS_FOR_SWEEP:
-        #         stepper_steps_taken = 0
-        #         stepper_direction_cw = not stepper_direction_cw
-        #         GPIO.output(DIR_PIN, GPIO.HIGH if stepper_direction_cw else GPIO.LOW)
+        #Mapping environment
+        #calibration_data = calibrate_environment(pi, lidar_data_queue)
+        #print(calibration_data)
+        #save_calibration_data(calibration_data)
+        test_xyz_movement(pi)
 
         print("Scanning complete.")
-        save_calibration_data(calibration_data)
+        
     except KeyboardInterrupt:
         print("\nProgram stopped by user.")
     finally:
