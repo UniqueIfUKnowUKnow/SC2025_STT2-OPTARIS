@@ -36,4 +36,15 @@ SENSOR_MAX = 1300
 # This prevents false positives from single noisy readings.
 DETECTION_CONFIDENCE_THRESHOLD = 5
 
+# --- Assurance Scan Settings ---
+ZIG_ZAG_STEP_SIZE = 2  # Degrees per step in zigzag pattern
+ZIG_ZAG_ELEVATION_INCREMENT = 1  # Degrees to increment elevation each sweep
+POINTS_NEEDED = 3  # Total number of points needed for trajectory
+MAX_POINTS_MEMORY = 100  # Maximum number of points to store for trajectory
+
+# --- Trajectory Following Settings ---
+TRAJECTORY_UPDATE_THRESHOLD = 5.0  # cm - Minimum change needed to update trajectory
+NARROW_SCAN_WIDTH = 20  # Degrees - Width of scan when following trajectory
+TRACKING_SPEED_MULTIPLIER = 1.5  # Speed increase for tracking mode
+
 
