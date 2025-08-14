@@ -2,7 +2,7 @@ import math
 
 def xyz_to_polar(x, y, z):
     """
-    Convert Cartesian coordinates (x, y, z) to polar coordinates (azimuth, elevation).
+    Convert Cartesian coordinates (x, y, z) to polar coordinates (distance, azimuth, elevation).
     
     Args:
         x (float): X coordinate (forward/backward relative to sensor)
