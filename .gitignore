@@ -1,0 +1,14 @@
+ # Dependencies - Do not upload
+node_modules/
+
+# Build output - Do not upload
+dist/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
