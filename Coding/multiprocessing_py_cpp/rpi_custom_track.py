@@ -75,6 +75,11 @@ def cartesian_to_spherical(point):
     dist = math.sqrt(x**2 + y**2 + z**2)
     el = math.degrees(math.atan2(z, math.sqrt(x**2 + y**2)))
     az = math.degrees(math.atan2(y, x)) # Use atan2(y, x) for standard azimuth
+    
+    # --- FIX: Ensure the azimuth angle is always positive (0-360 degrees). ---
+    if az < 0:
+        az += 360
+        
     return az, el, dist
 
 # --- Custom Trajectory Tracker ---
@@ -188,8 +193,9 @@ def main():
             # Determine current sweep parameters based on state
             is_tracking = current_state == "TRACKING"
             stepper_sweep_deg = TRACKING_STEPPER_DEGREES if is_tracking else ACQUISITION_STEPPER_DEGREES
-            servo_sweep_start = ACQUISITION_SERVO_START
-            servo_sweep_end = ACQUISITION_SERVO_END
+            # --- FIX: Use local variables for sweep range to avoid confusion ---
+            current_servo_sweep_start = ACQUISITION_SERVO_START
+            current_servo_sweep_end = ACQUISITION_SERVO_END
             pulse_delay = TRACKING_PULSE_DELAY if is_tracking else ACQUISITION_PULSE_DELAY
             steps_for_sweep = int((stepper_sweep_deg / 360.0) * STEPS_PER_REVOLUTION)
 
@@ -198,10 +204,10 @@ def main():
                 predicted_point = tracker.predict()
                 predicted_az, predicted_el, _ = cartesian_to_spherical(predicted_point)
                 
-                # Define the narrower, faster sweep range around the predicted center
-                stepper_sweep_start = predicted_az - (stepper_sweep_deg / 2)
-                servo_sweep_start = predicted_el - (TRACKING_SERVO_DEGREES / 2)
-                servo_sweep_end = predicted_el + (TRACKING_SERVO_DEGREES / 2)
+                # --- FIX: Define the free-roaming servo sweep range around the prediction ---
+                # The servo is now free to follow the target anywhere, not just in the acquisition zone.
+                current_servo_sweep_start = predicted_el - (TRACKING_SERVO_DEGREES / 2)
+                current_servo_sweep_end = predicted_el + (TRACKING_SERVO_DEGREES / 2)
             
             # --- Motor Control ---
             GPIO.output(STEP_PIN, GPIO.HIGH)
@@ -214,10 +220,10 @@ def main():
                 last_servo_update = time.time()
                 if servo_direction_up:
                     servo_angle += 1
-                    if servo_angle >= servo_sweep_end: servo_direction_up = False
+                    if servo_angle >= current_servo_sweep_end: servo_direction_up = False
                 else:
                     servo_angle -= 1
-                    if servo_angle <= servo_sweep_start: servo_direction_up = True
+                    if servo_angle <= current_servo_sweep_start: servo_direction_up = True
                 set_servo_angle(pi, servo_angle)
 
             # --- LiDAR Data & State Logic ---
@@ -238,11 +244,12 @@ def main():
 
                         # Convert to 3D point and update tracker
                         current_point_3d = spherical_to_cartesian(current_stepper_angle, servo_angle, distance)
-                        tracker.update(current_point_3d)
                         
                         if is_tracking:
+                            tracker.update(current_point_3d)
                             print(f"TRACKING UPDATE: Dist:{distance}cm, Stepper:{current_stepper_angle:.1f}°, Servo:{servo_angle}°")
                         else: # Assurance Scan
+                            tracker.update(current_point_3d) # Start populating history
                             detected_points.append(current_point_3d)
                             print(f"TARGET POINT {len(detected_points)} DETECTED! Dist:{distance}cm, Stepper:{current_stepper_angle:.1f}°, Servo:{servo_angle}°")
                             if len(detected_points) >= INITIAL_POINTS_TO_FIND:
@@ -282,4 +289,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
