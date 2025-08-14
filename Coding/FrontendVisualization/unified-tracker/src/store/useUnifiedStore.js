@@ -28,7 +28,8 @@ const useUnifiedStore = create((set, get) => ({
     pan_angle: null,
     tilt_angle: null,
     signal_strength: null,
-    distance: null
+    distance: null,
+    statusMessage: null // NEW: Status message from WebSocket payload
   },
   
   // History and tracking
@@ -45,6 +46,99 @@ const useUnifiedStore = create((set, get) => ({
   
   updateData: (data) => {
     const currentState = get();
+    
+    // NEW: Handle the new WebSocket message format from Raspberry Pi
+    if (data.state) {
+      // New format: { state: "CALIBRATING|SCANNING|DETECTED|FINISHED", payload: {...} }
+      const { state, payload } = data;
+      
+      // Map the new state values to existing status values
+      let mappedStatus = state;
+      let mappedProgress = payload.progress || 0;
+      let mappedWarning = null;
+      let mappedError = null;
+      
+      // Process state-specific data
+      switch (state) {
+        case 'CALIBRATING':
+          mappedStatus = 'BACKGROUND_SCAN_IN_PROGRESS';
+          // Handle calibration progress
+          if (payload.status === 'complete' && payload.average_distance) {
+            mappedWarning = `Calibration complete! Average background distance: ${payload.average_distance} cm`;
+          }
+          break;
+          
+        case 'SCANNING':
+          mappedStatus = 'SEARCHING_FOR_TARGET';
+          // Handle real-time scanning data
+          if (payload.angle !== undefined) {
+            // Convert angle to scanner position for visualization
+            const scannerPos = get().calculateScannerPosition(payload.angle);
+            set(state => ({
+              scannerPosition: scannerPos,
+              liveTelemetry: {
+                ...state.liveTelemetry,
+                pan_angle: payload.angle,
+                distance: payload.distance,
+                statusMessage: payload.message
+              }
+            }));
+          }
+          break;
+          
+        case 'DETECTED':
+          mappedStatus = 'TRACKING_TARGET';
+          // Handle final detection data
+          if (payload.distance && payload.stepper_angle) {
+            // Convert detection data to position
+            const targetPos = get().calculateTargetPosition(payload);
+            set(state => ({
+              measuredPosition: targetPos,
+              statusMessage: payload.message
+            }));
+            
+            // Add to position history
+            const newHistoryEntry = {
+              pos: targetPos,
+              time: Date.now()
+            };
+            set(state => ({
+              positionHistory: [...state.positionHistory.slice(-49), newHistoryEntry]
+            }));
+          }
+          break;
+          
+        case 'FINISHED':
+          mappedStatus = 'STANDBY';
+          mappedWarning = payload.message || 'Process completed';
+          break;
+          
+        default:
+          // Unknown state, keep current status
+          mappedStatus = currentState.status;
+      }
+      
+      // Update the store with the new data
+      set({
+        status: mappedStatus,
+        progress: mappedProgress,
+        warning: mappedWarning,
+        error: mappedError,
+        liveTelemetry: {
+          ...currentState.liveTelemetry,
+          statusMessage: payload.message || currentState.liveTelemetry.statusMessage
+        }
+      });
+      
+      console.log('Store updated with new WebSocket format:', {
+        state,
+        mappedStatus,
+        progress: mappedProgress,
+        message: payload.message
+      });
+      
+      return;
+    }
     
     // Handle the unified format from the backend
     // The backend sends data directly without a payload wrapper
@@ -114,7 +208,7 @@ const useUnifiedStore = create((set, get) => ({
       
       // Update position history with timestamps
       let updatedHistory = currentState.positionHistory;
-      if (payload.position_history) {
+      if (payload.position_history && Array.isArray(payload.position_history)) {
         const now = Date.now();
         updatedHistory = payload.position_history.map(pos => ({ pos, time: now }));
       }
@@ -183,6 +277,34 @@ const useUnifiedStore = create((set, get) => ({
     get().computePredictedOrbit();
   },
   
+  // NEW: Helper function to calculate scanner position from angle
+  calculateScannerPosition: (angle) => {
+    // Convert angle to 3D position for visualization
+    // This is a simplified calculation - adjust based on your scanner geometry
+    const radius = 5; // Scanner arm length in meters
+    const x = radius * Math.cos((angle * Math.PI) / 180);
+    const y = 0; // Height remains constant
+    const z = radius * Math.sin((angle * Math.PI) / 180);
+    return [x, y, z];
+  },
+  
+  // NEW: Helper function to calculate target position from detection data
+  calculateTargetPosition: (payload) => {
+    // Convert detection data to 3D position
+    // This is a simplified calculation - adjust based on your coordinate system
+    const { distance, stepper_angle, servo_angle } = payload;
+    
+    // Convert distance from cm to meters
+    const distanceM = distance / 100;
+    
+    // Calculate position based on angles and distance
+    const x = distanceM * Math.cos((stepper_angle * Math.PI) / 180);
+    const y = distanceM * Math.sin((servo_angle * Math.PI) / 180);
+    const z = distanceM * Math.sin((stepper_angle * Math.PI) / 180);
+    
+    return [x, y, z];
+  },
+  
   clearForReset: () => {
     set({
       status: 'STANDBY',
@@ -195,7 +317,8 @@ const useUnifiedStore = create((set, get) => ({
         pan_angle: null,
         tilt_angle: null,
         signal_strength: null,
-        distance: null
+        distance: null,
+        statusMessage: null
       },
       positionHistory: [],
       predictedOrbitParams: null,
@@ -206,68 +329,48 @@ const useUnifiedStore = create((set, get) => ({
   setProgress: (progress) => set({ progress }),
   setWarning: (warning) => set({ warning }),
   setError: (error) => set({ error }),
+  
   setSatellites: (satellites) => set({ satellites }),
   
+  // === ORBITAL CALCULATIONS ===
+  
   computePredictedOrbit: () => {
-    const { positionHistory } = get();
+    const state = get();
+    if (!state.measuredPosition || state.positionHistory.length < 3) return;
     
-    if (!Array.isArray(positionHistory) || positionHistory.length < 3) {
-      set({ predictedOrbitParams: null });
-      return;
+    try {
+      // Calculate orbital parameters from position history
+      // This is a simplified calculation - implement proper orbital mechanics as needed
+      const positions = state.positionHistory.map(h => h.pos);
+      const center = positions.reduce((acc, pos) => 
+        [acc[0] + pos[0], acc[1] + pos[1], acc[2] + pos[2]], [0, 0, 0]
+      ).map(coord => coord / positions.length);
+      
+      // Calculate average distance from center
+      const avgDistance = positions.reduce((acc, pos) => {
+        const dx = pos[0] - center[0];
+        const dy = pos[1] - center[1];
+        const dz = pos[2] - center[2];
+        return acc + Math.sqrt(dx*dx + dy*dy + dz*dz);
+      }, 0) / positions.length;
+      
+      const orbitParams = {
+        elements: {
+          semiMajorAxis: avgDistance * 1000, // Convert to km
+          eccentricity: 0.1, // Simplified
+          inclination: 45, // Simplified
+          argumentOfPerigee: 0, // Simplified
+          rightAscensionOfAscendingNode: 0, // Simplified
+          meanAnomaly: 0 // Simplified
+        },
+        center: center,
+        radius: avgDistance
+      };
+      
+      set({ predictedOrbitParams: orbitParams });
+    } catch (error) {
+      console.warn('Error computing predicted orbit:', error);
     }
-    
-    // Take the most recent points
-    const recent = positionHistory.slice(-100);
-    const xs = recent.map(h => h.pos[0]);
-    const ys = recent.map(h => h.pos[1]);
-    const zs = recent.map(h => h.pos[2]);
-    
-    // Compute simple statistics
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minZ = Math.min(...zs);
-    const maxZ = Math.max(...zs);
-    const avgY = ys.reduce((a, b) => a + b, 0) / ys.length;
-    
-    // Estimate ellipse parameters
-    let radiusX = Math.max(0.1, (maxX - minX) / 2);
-    let radiusZ = Math.max(0.1, (maxZ - minZ) / 2);
-    
-    const a_major = Math.max(radiusX, radiusZ);
-    const b_minor = Math.min(radiusX, radiusZ);
-    const eccentricity = Math.sqrt(Math.max(0, 1 - (b_minor * b_minor) / (a_major * a_major)));
-    
-    // Estimate inclination
-    const p0 = recent[Math.max(0, recent.length - 3)].pos;
-    const p1 = recent[Math.max(0, recent.length - 2)].pos;
-    const p2 = recent[Math.max(0, recent.length - 1)].pos;
-    const v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-    const v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-    const normal = [
-      v1[1] * v2[2] - v1[2] * v2[1],
-      v1[2] * v2[0] - v1[0] * v2[2],
-      v1[0] * v2[1] - v1[1] * v2[0],
-    ];
-    const normalMag = Math.sqrt(normal[0]**2 + normal[1]**2 + normal[2]**2) || 1;
-    const dotWithY = normal[1] / normalMag;
-    const inclinationRad = Math.acos(Math.min(1, Math.max(-1, Math.abs(dotWithY))));
-    
-    const predicted = {
-      type: 'ellipse',
-      a: Number(a_major.toFixed(2)),
-      b: Number(b_minor.toFixed(2)),
-      altitude: Number(avgY.toFixed(2)),
-      elements: {
-        semiMajorAxis: Number(a_major.toFixed(2)),
-        eccentricity: Number(eccentricity.toFixed(3)),
-        inclinationDeg: Number((inclinationRad * 180 / Math.PI).toFixed(2)),
-        raanDeg: 0, // Placeholder
-        argPeriapsisDeg: 0, // Placeholder
-        trueAnomalyDeg: 0, // Placeholder
-      },
-    };
-    
-    set({ predictedOrbitParams: predicted });
   },
 }));
 

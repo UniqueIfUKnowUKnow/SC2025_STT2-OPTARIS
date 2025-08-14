@@ -14,6 +14,61 @@ const SCENE_SCALE = 1;                // Scale factor for the 3D scene (1 unit =
 const HISTORY_POINTS_MAX = 5;         // Maximum number of history points to show
 const FADE_DURATION_MS = 5000;        // How long history points take to fade out (5 seconds)
 
+// NEW: Real-Time Status Display Component
+const RealTimeStatus = ({ status, progress, message, liveTelemetry }) => (
+  <Html position={[0, 15, 0]} center>
+    <div className="real-time-status-overlay">
+      <div className="status-header">
+        <h3>LiDAR Scanner Status</h3>
+        <div className={`status-badge ${status?.toLowerCase().replace(/\s+/g, '-')}`}>
+          {status || 'STANDBY'}
+        </div>
+      </div>
+      
+      {progress > 0 && (
+        <div className="progress-section">
+          <div className="progress-bar">
+            <div 
+              className="progress-fill" 
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <span className="progress-text">{progress}%</span>
+        </div>
+      )}
+      
+      {message && (
+        <div className="status-message">
+          {message}
+        </div>
+      )}
+      
+      {liveTelemetry && (
+        <div className="telemetry-display">
+          <div className="telemetry-item">
+            <span className="telemetry-label">Distance:</span>
+            <span className="telemetry-value">
+              {liveTelemetry.distance ? `${liveTelemetry.distance} cm` : 'N/A'}
+            </span>
+          </div>
+          <div className="telemetry-item">
+            <span className="telemetry-label">Pan Angle:</span>
+            <span className="telemetry-value">
+              {liveTelemetry.pan_angle ? `${liveTelemetry.pan_angle}°` : 'N/A'}
+            </span>
+          </div>
+          <div className="telemetry-item">
+            <span className="telemetry-label">Tilt Angle:</span>
+            <span className="telemetry-value">
+              {liveTelemetry.tilt_angle ? `${liveTelemetry.tilt_angle}°` : 'N/A'}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  </Html>
+);
+
 // History Point Component - This shows previous target positions as fading dots
 // Each point represents where the target was measured at a previous time
 const HistoryPoint = ({ position, timestamp, index }) => {
@@ -228,37 +283,59 @@ const Legend = () => {
   );
 };
 
-// Main LocalView Component - This renders the entire 3D LiDAR tracker scene
+// Main LocalView Component
 const LocalView = ({
-  measuredPosition,              // Current target position from LiDAR measurements
-  scannerPosition,               // Where the scanner beam is currently pointing
-  positionHistory,               // History of previous target positions
-  liveTelemetry,                // Real-time sensor data (angles, signal strength, etc.)
-  status,                        // Current system status
-  predictedOrbitParams           // Calculated orbital parameters for the target
+  measuredPosition,        // Current target position
+  scannerPosition,         // Where the scanner beam is pointing
+  positionHistory,         // History of target positions
+  liveTelemetry,          // Real-time sensor data
+  status,                 // Current system status
+  progress,               // NEW: Progress percentage
+  predictedOrbitParams    // Predicted orbit to show in local view
 }) => {
-  // Reference to the scene group for managing the 3D objects
-  const sceneRef = useRef();
+  // Reference to the scanner beam for animations
+  const scannerBeamRef = useRef();
+  
+  // Reference to the target mesh for animations
+  const targetRef = useRef();
+  
+  // Reference to the LiDAR sensor mesh
+  const lidarRef = useRef();
 
-  // Filter and sort position history to show only recent points
-  const recentHistory = useMemo(() => {
-    if (!positionHistory || positionHistory.length === 0) return [];
+  // Animation frame for real-time updates
+  useFrame(() => {
+    // Animate the scanner beam if we have a scanner position
+    if (scannerBeamRef.current && scannerPosition && scannerPosition[0] !== null) {
+      // Update scanner beam position in real-time
+      scannerBeamRef.current.position.set(...scannerPosition);
+    }
     
-    // Sort by timestamp (newest first) and take only the most recent points
-    const sorted = [...positionHistory]
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, HISTORY_POINTS_MAX);
+    // Animate the target if we have a measured position
+    if (targetRef.current && measuredPosition) {
+      // Smoothly move the target to the new position
+      targetRef.current.position.lerp(new THREE.Vector3(...measuredPosition), 0.1);
+    }
     
-    return sorted;
-  }, [positionHistory]);
+    // Add subtle rotation to the LiDAR sensor
+    if (lidarRef.current) {
+      lidarRef.current.rotation.y += 0.01;
+    }
+  });
+
+  // Calculate the range sphere radius based on the maximum range
+  const rangeSphereRadius = useMemo(() => LIDAR_RANGE_METERS * SCENE_SCALE, []);
 
   return (
-    <group ref={sceneRef}>
-      {/* Lighting for the 3D scene */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={0.8} />
+    <ErrorBoundary>
+      {/* NEW: Real-Time Status Display */}
+      <RealTimeStatus 
+        status={status}
+        progress={progress}
+        message={liveTelemetry?.statusMessage}
+        liveTelemetry={liveTelemetry}
+      />
       
-      {/* Ground grid to help with spatial orientation */}
+      {/* Grid for reference */}
       <Grid 
         args={[20, 20]} 
         cellSize={1} 
@@ -273,47 +350,83 @@ const LocalView = ({
         infiniteGrid={true} 
       />
       
-      {/* LiDAR sensor at the center */}
-      <LidarSensor />
+      {/* LiDAR Sensor (Origin Point) */}
+      <mesh ref={lidarRef} position={[0, 0, 0]}>
+        <cylinderGeometry args={[0.3, 0.3, 0.5, 8]} />
+        <meshBasicMaterial color="#00d4ff" />
+      </mesh>
       
-      {/* Range sphere showing maximum LiDAR coverage */}
-      <RangeSphere />
-      
-      {/* Scanner beam showing where the LiDAR is pointing */}
+      {/* Scanner Beam */}
       <ScannerBeam 
         scannerPosition={scannerPosition}
         status={status}
         measuredPosition={measuredPosition}
       />
       
-      {/* Target marker showing current measured position */}
-      <TargetMarker 
-        measuredPosition={measuredPosition}
-        status={status}
-      />
-      
-      {/* History points showing previous target positions */}
-      {recentHistory.map((point, index) => (
-        <HistoryPoint
-          key={`history-${index}`}
-          position={point.position}
-          timestamp={point.timestamp}
-          index={index}
+      {/* Range Sphere (Transparent) */}
+      <mesh>
+        <sphereGeometry args={[rangeSphereRadius, 16, 16]} />
+        <meshBasicMaterial 
+          color="#00d4ff" 
+          transparent 
+          opacity={0.1} 
+          wireframe={true}
         />
-      ))}
+      </mesh>
       
-      {/* Predicted orbit based on LiDAR measurements */}
-      <PredictedOrbit 
-        predictedOrbitParams={predictedOrbitParams}
-        status={status}
-      />
+      {/* Current Target Position */}
+      {measuredPosition && (
+        <mesh ref={targetRef} position={measuredPosition}>
+          <sphereGeometry args={[0.2, 12, 12]} />
+          <meshBasicMaterial color="#ff6b35" />
+        </mesh>
+      )}
       
-      {/* Live telemetry display */}
-      <LiveTelemetry liveTelemetry={liveTelemetry} />
+      {/* History Points */}
+      {positionHistory && positionHistory.length > 0 && (
+        <>
+          {positionHistory.slice(-HISTORY_POINTS_MAX).map((historyPoint, index) => (
+            <HistoryPoint
+              key={`${historyPoint.time}-${index}`}
+              position={historyPoint.pos}
+              timestamp={historyPoint.time}
+              index={index}
+            />
+          ))}
+        </>
+      )}
       
-      {/* Visual legend */}
-      <Legend />
-    </group>
+      {/* Predicted Orbit Path */}
+      {predictedOrbitParams && (
+        <PredictedOrbit 
+          orbitParams={predictedOrbitParams}
+          color="#00ff88"
+          lineWidth={2}
+        />
+      )}
+      
+      {/* Coordinate System Axes */}
+      <group>
+        {/* X-axis (Red) */}
+        <Line
+          points={[[0, 0, 0], [5, 0, 0]]}
+          color="#ff0000"
+          lineWidth={2}
+        />
+        {/* Y-axis (Green) */}
+        <Line
+          points={[[0, 0, 0], [0, 5, 0]]}
+          color="#00ff00"
+          lineWidth={2}
+        />
+        {/* Z-axis (Blue) */}
+        <Line
+          points={[[0, 0, 0], [0, 0, 5]]}
+          color="#0000ff"
+          lineWidth={2}
+        />
+      </group>
+    </ErrorBoundary>
   );
 };
 
