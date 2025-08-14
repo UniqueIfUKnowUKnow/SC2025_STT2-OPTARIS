@@ -58,7 +58,8 @@ const SystemHUD = ({
   onStart,                       // Function to call when the Start button is clicked
   onStop,                        // Function to call when the Stop button is clicked
   onReset,                       // Function to call when the Reset button is clicked
-  onModeChange                   // NEW: Function to call when mode changes
+  onModeChange,                  // NEW: Function to call when mode changes
+  onTestConnection               // NEW: Function to test WebSocket connection
 }) => {
   // Extract orbital elements from the predicted orbit parameters
   const elements = getOrbitalElements(predictedOrbitParams);
@@ -228,13 +229,23 @@ const SystemHUD = ({
                   placeholder="ws://192.168.1.100:8765"
                   aria-label="WebSocket connection URL"
                 />
-                <button 
-                  className="connect-button"
-                  onClick={onReconnect}
-                  disabled={wsStatus === 'connecting'}
-                >
-                  {wsStatus === 'connecting' ? 'Connecting...' : 'Connect'}
-                </button>
+                <div className="websocket-buttons">
+                  <button 
+                    className="connect-button"
+                    onClick={onReconnect}
+                    disabled={wsStatus === 'connecting'}
+                  >
+                    {wsStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+                  </button>
+                  <button 
+                    className="test-button"
+                    onClick={onTestConnection}
+                    disabled={wsStatus === 'connecting'}
+                    title="Test connection without establishing full connection"
+                  >
+                    Test
+                  </button>
+                </div>
               </div>
             </div>
           )}

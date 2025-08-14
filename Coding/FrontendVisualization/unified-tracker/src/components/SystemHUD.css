@@ -261,16 +261,26 @@
   box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
 }
 
-.connect-button {
-  width: 100%;
+.websocket-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.connect-button,
+.test-button {
+  flex: 1;
   padding: 8px;
-  background: #00d4ff;
-  color: #000000;
   border: none;
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.connect-button {
+  background: #00d4ff;
+  color: #000000;
 }
 
 .connect-button:hover:not(:disabled) {
@@ -279,6 +289,21 @@
 }
 
 .connect-button:disabled {
+  background: #666;
+  cursor: not-allowed;
+}
+
+.test-button {
+  background: #ff6b35;
+  color: #ffffff;
+}
+
+.test-button:hover:not(:disabled) {
+  background: #e55a2b;
+  transform: translateY(-1px);
+}
+
+.test-button:disabled {
   background: #666;
   cursor: not-allowed;
 }

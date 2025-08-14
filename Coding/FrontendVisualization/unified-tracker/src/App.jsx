@@ -160,6 +160,14 @@ function App() {
       onStatusChange: (status) => {
         console.log('App: WebSocket status changed to:', status);
         setWsStatus(status);
+        
+        // Clear any previous warnings/errors when connection status changes
+        if (status === 'connected') {
+          setWarning(null);
+          setError(null);
+        } else if (status === 'error') {
+          setError(`Failed to connect to ${wsUrl}. Check if the server is running and accessible.`);
+        }
       },
       onMessage: (msg) => {
         console.log('App: Received WebSocket message:', msg);
@@ -311,7 +319,7 @@ function App() {
     
     // Create a new WebSocket client with the updated URL
     const client = new SensorWebSocket({
-      url: wsUrl,
+      url: newUrl, // FIXED: Use newUrl instead of wsUrl
       onStatusChange: (status) => {
         console.log('App: New WebSocket status changed to:', status);
         setWsStatus(status);
@@ -338,8 +346,11 @@ function App() {
     // NEW: Only reconnect if we're in Real Mode
     if (appMode !== 'real') {
       console.log('App: Simulation mode - no WebSocket reconnection needed');
+      setWarning('Please switch to Real Mode to connect to WebSocket');
       return;
     }
+    
+    console.log('App: Attempting to connect to WebSocket at:', wsUrl);
     
     if (wsRef.current) {
       console.log('App: Stopping existing WebSocket connection for reconnection');
@@ -349,10 +360,18 @@ function App() {
     
     // Create a new WebSocket client
     const client = new SensorWebSocket({
-      url: wsUrl,
+      url: wsUrl, // This is correct here since we're reconnecting to the current URL
       onStatusChange: (status) => {
         console.log('App: Reconnected WebSocket status changed to:', status);
         setWsStatus(status);
+        
+        // Clear any previous warnings/errors when connection status changes
+        if (status === 'connected') {
+          setWarning(null);
+          setError(null);
+        } else if (status === 'error') {
+          setError(`Failed to connect to ${wsUrl}. Check if the server is running and accessible.`);
+        }
       },
       onMessage: (msg) => {
         console.log('App: Received message from reconnected WebSocket:', msg);
@@ -381,12 +400,50 @@ function App() {
         wsRef.current = null;
       }
       setWsStatus('disconnected');
+      setWarning(null);
+      setError(null);
     }
     // If switching to real mode, establish WebSocket connection
     else if (newMode === 'real') {
       console.log('App: Switching to real mode - establishing WebSocket connection');
       // The useEffect will handle the WebSocket connection
     }
+  };
+
+  // NEW: Function to test WebSocket connection
+  const testWebSocketConnection = () => {
+    console.log('App: Testing WebSocket connection to:', wsUrl);
+    
+    if (appMode !== 'real') {
+      setWarning('Please switch to Real Mode to test WebSocket connection');
+      return;
+    }
+    
+    // Create a temporary WebSocket to test the connection
+    const testSocket = new WebSocket(wsUrl);
+    
+    testSocket.onopen = () => {
+      console.log('App: Test connection successful to:', wsUrl);
+      setWarning(`Test connection successful to ${wsUrl}`);
+      testSocket.close();
+    };
+    
+    testSocket.onerror = (error) => {
+      console.error('App: Test connection failed to:', wsUrl, error);
+      setError(`Test connection failed to ${wsUrl}. Check if the server is running.`);
+    };
+    
+    testSocket.onclose = () => {
+      console.log('App: Test connection closed');
+    };
+    
+    // Set a timeout to close the test connection if it doesn't connect quickly
+    setTimeout(() => {
+      if (testSocket.readyState === WebSocket.CONNECTING) {
+        testSocket.close();
+        setError(`Test connection timeout to ${wsUrl}. Server may be unreachable.`);
+      }
+    }, 5000);
   };
 
   // If we're showing the start screen, render it
@@ -488,6 +545,7 @@ function App() {
             onStop={handleStop}                         // Function to call when Stop is clicked
             onReset={handleReset}                       // Function to call when Reset is clicked
             onModeChange={handleModeChange}            // Function to call when mode changes
+            onTestConnection={testWebSocketConnection}  // NEW: Function to test WebSocket connection
           />
         </div>
       </div>

@@ -432,16 +432,18 @@ def main():
         asyncio.set_event_loop(loop)
         
         try:
+            print("Starting WebSocket server...")
             # Start the WebSocket server in the background
             websocket_task = asyncio.create_task(start_websocket_server())
             
             # Wait a moment for the server to start
             loop.run_until_complete(asyncio.sleep(1))
+            print(f"WebSocket server started on ws://{WEBSOCKET_HOST}:{WEBSOCKET_PORT}")
+            print("Frontend applications can now connect to receive real-time data")
             
-            # Run the main scanning process
-            loop.run_until_complete(main_async(args.mode, args.stage))
-            
-            # Keep the WebSocket server running
+            # For now, just keep the WebSocket server running
+            # We'll add the scanning logic later
+            print("WebSocket server is running. Press Ctrl+C to stop.")
             loop.run_until_complete(websocket_task)
         except KeyboardInterrupt:
             print("\nShutting down gracefully...")
