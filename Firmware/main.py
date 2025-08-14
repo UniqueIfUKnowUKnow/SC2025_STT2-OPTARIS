@@ -66,13 +66,13 @@ def main():
             elif current_state == "SCANNING":
                 print("Scanning area...")
                 # scanning code here
-                anomaly_detected, anomaly_positions, stepper_steps, current_elevation, current_azimuth = sweep_scan_for_anomaly
-                (pi, lidar_data_queue, calibration_data, 
-                    stepper_steps, current_elevation,
-                    AZIMUTH_SWEEP_RANGES, ELEVATION_SWEEP_RANGES,
-                    ANOMALY_THRESHOLD_FACTOR,
-                    CONSECUTIVE_DETECTIONS_REQUIRED,
-                    MAX_DISTANCE_CHANGE)
+                anomaly_detected, anomaly_positions, stepper_steps, current_elevation, current_azimuth = sweep_scan_for_anomaly(pi, lidar_data_queue, calibration_data, 
+                stepper_steps, current_elevation,
+                INITIAL_SWEEP_AZIMUTH_START, INITIAL_SWEEP_AZIMUTH_END,
+                INITIAL_SWEEP_TILT_START, INITIAL_SWEEP_TILT_END,
+                ANOMALY_THRESHOLD_FACTOR,
+                CONSECUTIVE_DETECTIONS_REQUIRED,
+                MAX_DISTANCE_CHANGE)
                 print(anomaly_detected)
 
                 target_detected = True

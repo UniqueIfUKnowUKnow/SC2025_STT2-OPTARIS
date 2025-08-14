@@ -5,11 +5,12 @@ from constants import *
 from move_motors import set_servo_angle, stepper_step
 
 def sweep_scan_for_anomaly(pi, lidar_data_queue, calibration_data, 
-                          current_azimuth_steps, current_elevation,
-                          azimuth_sweep_range, elevation_sweep_range,
-                          anomaly_threshold_factor=0.7, 
-                          consecutive_detections_needed=3,
-                          sweep_step_size=0.5):
+                            current_azimuth_steps, current_elevation,
+                            azimuth_start, azimuth_end,
+                            elevation_start, elevation_end,
+                            anomaly_threshold_factor=0.7, 
+                            consecutive_detections_needed=3,
+                            max_distance_change=50):
     """
     Sweeps the stepper motor left and right within specified ranges, comparing
     LiDAR readings to calibration reference data to detect anomalies.
@@ -20,25 +21,22 @@ def sweep_scan_for_anomaly(pi, lidar_data_queue, calibration_data,
         calibration_data: List of [distance, azimuth, elevation] from calibration
         current_azimuth_steps: Current stepper position in steps
         current_elevation: Current servo elevation in degrees
-        azimuth_sweep_range: Tuple (min_azimuth, max_azimuth) in degrees
-        elevation_sweep_range: Tuple (min_elevation, max_elevation) in degrees
+        azimuth_start: Minimum azimuth in degrees
+        azimuth_end: Maximum azimuth in degrees
+        elevation_start: Minimum elevation in degrees
+        elevation_end: Maximum elevation in degrees
         anomaly_threshold_factor: Factor for anomaly detection (0.7 = 30% change)
         consecutive_detections_needed: Number of consecutive detections required
-        sweep_step_size: Step size for azimuth sweep in degrees
+        max_distance_change: Maximum distance change to consider valid
         
     Returns:
-        dict: {
-            'anomaly_detected': bool,
-            'anomaly_positions': list of [azimuth, elevation] where anomalies detected,
-            'final_azimuth_steps': int,
-            'final_elevation': float,
-            'final_azimuth_degrees': float
-        }
+        tuple: (anomaly_detected, anomaly_positions, final_azimuth_steps, 
+                final_elevation, final_azimuth_degrees)
     """
     
     print(f"Starting anomaly sweep scan...")
-    print(f"Azimuth range: {azimuth_sweep_range[0]}° to {azimuth_sweep_range[1]}°")
-    print(f"Elevation range: {elevation_sweep_range[0]}° to {elevation_sweep_range[1]}°")
+    print(f"Azimuth range: {azimuth_start}° to {azimuth_end}°")
+    print(f"Elevation range: {elevation_start}° to {elevation_end}°")
     
     # Convert calibration data to lookup dictionary for faster access
     calibration_lookup = {}
@@ -66,10 +64,10 @@ def sweep_scan_for_anomaly(pi, lidar_data_queue, calibration_data,
     current_azimuth_degrees = (current_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
     
     # Clamp sweep ranges to valid limits
-    min_azimuth = max(0, azimuth_sweep_range[0])
-    max_azimuth = min(360, azimuth_sweep_range[1])
-    min_elevation = max(SERVO_SWEEP_START, elevation_sweep_range[0])
-    max_elevation = min(SERVO_SWEEP_END, elevation_sweep_range[1])
+    min_azimuth = max(0, azimuth_start)
+    max_azimuth = min(360, azimuth_end)
+    min_elevation = max(SERVO_SWEEP_START, elevation_start)
+    max_elevation = min(SERVO_SWEEP_END, elevation_end)
     
     # Generate elevation positions (2° resolution)
     elevation_positions = []
@@ -171,7 +169,7 @@ def sweep_scan_for_anomaly(pi, lidar_data_queue, calibration_data,
                 
                 # Check for anomaly
                 anomaly_at_position = False
-                
+
                 if reference_key in reference_distances:
                     # Compare to calibration reference
                     reference_distance = reference_distances[reference_key]
@@ -180,13 +178,13 @@ def sweep_scan_for_anomaly(pi, lidar_data_queue, calibration_data,
                     if current_distance < (reference_distance * anomaly_threshold_factor):
                         anomaly_at_position = True
                         print(f"  Anomaly detected at Az:{azimuth:.1f}°, El:{elevation:.1f}° - "
-                              f"Current: {current_distance:.1f}cm, Reference: {reference_distance:.1f}cm")
+                            f"Current: {current_distance:.1f}cm, Reference: {reference_distance:.1f}cm")
                 else:
-                    # No reference data - check if we're detecting something close
-                    if current_distance < 200:  # Arbitrary threshold for close objects
+                    # No reference data - treat close objects as anomalies
+                    if current_distance < 100:  # Threshold for close objects
                         anomaly_at_position = True
                         print(f"  New object detected at Az:{azimuth:.1f}°, El:{elevation:.1f}° - "
-                              f"Distance: {current_distance:.1f}cm (no reference data)")
+                            f"Distance: {current_distance:.1f}cm (no reference data)")
                 
                 # Track consecutive anomalies
                 if anomaly_at_position:
@@ -210,20 +208,11 @@ def sweep_scan_for_anomaly(pi, lidar_data_queue, calibration_data,
         else:
             print("No anomalies detected during sweep")
         
-        return {
-            'anomaly_detected': anomaly_detected,
-            'anomaly_positions': anomaly_positions,
-            'final_azimuth_steps': final_azimuth_steps,
-            'final_elevation': final_elevation,
-            'final_azimuth_degrees': final_azimuth_degrees
-        }
+        # Return individual values as expected by main.py
+        return anomaly_detected, anomaly_positions, final_azimuth_steps, final_elevation, final_azimuth_degrees
         
     except Exception as e:
         print(f"Error during sweep scan: {e}")
-        return {
-            'anomaly_detected': False,
-            'anomaly_positions': [],
-            'final_azimuth_steps': final_azimuth_steps,
-            'final_elevation': final_elevation,
-            'final_azimuth_degrees': (final_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
-        }
+        # Return individual values on error
+        final_azimuth_degrees = (final_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
+        return False, [], final_azimuth_steps, final_elevation, final_azimuth_degrees
