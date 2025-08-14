@@ -1,3 +1,6 @@
+# !!! pip install -r requirements.txt !!!
+
+
 """
 Enhanced Scanner System Main Program
 ==================================
