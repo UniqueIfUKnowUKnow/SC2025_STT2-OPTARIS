@@ -180,11 +180,7 @@ def sweep_scan_for_anomaly(pi, lidar_data_queue, calibration_data,
                         print(f"  Anomaly detected at Az:{azimuth:.1f}°, El:{elevation:.1f}° - "
                             f"Current: {current_distance:.1f}cm, Reference: {reference_distance:.1f}cm")
                 else:
-                    # No reference data - treat close objects as anomalies
-                    if current_distance < 100:  # Threshold for close objects
-                        anomaly_at_position = True
-                        print(f"  New object detected at Az:{azimuth:.1f}°, El:{elevation:.1f}° - "
-                            f"Distance: {current_distance:.1f}cm (no reference data)")
+                    anomaly_at_position = False # No reference data - treat close objects as anomalies
                 
                 # Track consecutive anomalies
                 if anomaly_at_position:
