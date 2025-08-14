@@ -1,20 +1,8 @@
 import math
 
 def xyz_to_polar(x, y, z):
-    """
-    Convert Cartesian coordinates (x, y, z) to polar coordinates (azimuth, elevation).
     
-    Args:
-        x (float): X coordinate (forward/backward relative to sensor)
-        y (float): Y coordinate (left/right relative to sensor) 
-        z (float): Z coordinate (up/down relative to sensor)
-    
-    Returns:
-        tuple: (azimuth_degrees, elevation_degrees, distance)
-            - azimuth: 0-360 degrees (0° = +X axis, 90° = +Y axis)
-            - elevation: -90 to +90 degrees (0° = horizontal, +90° = straight up)
-            - distance: radial distance from origin
-    """
+    #Convert Cartesian coordinates (x, y, z) to polar coordinates (azimuth, elevation).
     # Calculate radial distance
     distance = math.sqrt(x**2 + y**2 + z**2)
     

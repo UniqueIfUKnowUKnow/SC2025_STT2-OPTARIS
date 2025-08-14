@@ -32,14 +32,10 @@ def reset_stepper_pos(stepper_steps_taken):
     print("Stepper pos reset and dir pin set to HIGH")
 
 
-def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0, verbose=True):
+def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0):
 
     # Convert to polar coordinates
     target_azimuth, target_elevation, distance = xyz_to_polar(x, y, z)
-    
-    if verbose:
-        print(f"Target XYZ: ({x:.1f}, {y:.1f}, {z:.1f}) cm")
-        print(f"Polar coordinates: Az={target_azimuth:.1f}°, El={target_elevation:.1f}°, Dist={distance:.1f}cm")
     
     # Check if elevation is within servo limits
     if target_elevation < SERVO_SWEEP_START or target_elevation > SERVO_SWEEP_END:
@@ -48,11 +44,6 @@ def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0, verbose=True):
         target_elevation = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, target_elevation))
         print(f"Clamped elevation to: {target_elevation:.1f}°")
     
-    # Move servo to target elevation
-    if verbose:
-        print(f"Moving servo to elevation: {target_elevation:.1f}°")
-    set_servo_angle(pi, target_elevation)
-    time.sleep(0.5)  # Allow servo to reach position
     
     # Calculate stepper movement
     # Convert target azimuth to steps
@@ -66,12 +57,6 @@ def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0, verbose=True):
         else:
             steps_to_move += STEPS_PER_REVOLUTION
     
-    if verbose:
-        current_azimuth = (current_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
-        print(f"Current azimuth: {current_azimuth:.1f}° ({current_azimuth_steps} steps)")
-        print(f"Target azimuth: {target_azimuth:.1f}° ({target_steps} steps)")
-        print(f"Steps to move: {steps_to_move}")
-    
     # Move stepper motor
     if steps_to_move != 0:
         # Set direction
@@ -81,9 +66,6 @@ def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0, verbose=True):
         else:
             GPIO.output(DIR_PIN, GPIO.LOW)   # Counter-clockwise
             direction = "CCW"
-        
-        if verbose:
-            print(f"Moving stepper {abs(steps_to_move)} steps {direction}")
         
         # Execute steps
         for _ in range(abs(steps_to_move)):
@@ -96,14 +78,7 @@ def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0, verbose=True):
         new_azimuth_steps = new_azimuth_steps % STEPS_PER_REVOLUTION
     else:
         new_azimuth_steps = current_azimuth_steps
-        if verbose:
-            print("Stepper already at target position")
-    
-    if verbose:
-        final_azimuth = (new_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
-        print(f"Movement complete. Final position: Az={final_azimuth:.1f}°, El={target_elevation:.1f}°")
-        print()
-    
+            
     return new_azimuth_steps, target_azimuth, target_elevation, distance
 
 def move_to_multiple_xyz_positions(pi, positions, start_azimuth_steps=0, dwell_time=1.0):
@@ -152,9 +127,14 @@ def test_xyz_movement(pi):
         (0, -1, 0),    # 45° right
         (0, 0, 1),      # Straight up
         (1, 1, 1),     # 45° right, 45° up
+<<<<<<< HEAD
         (-100, 0, 0),     # Behind (180°)
         (0, -100, 0),     # Left (270°)
         (50, 50, -30),    # 45° right, down (if servo allows)
+=======
+        (1, -1, 1),
+        (1, 0, 0),
+>>>>>>> ea0e25fcda6d4cd51f425bb29e9dea5708b240a9
     ]
     
     print("Testing coordinate conversions:")
