@@ -205,7 +205,7 @@ def main():
             if is_tracking:
                 ukf.predict()
                 predicted_az, predicted_el, _ = cartesian_to_spherical(np.array([ukf.x[0], ukf.x[2], ukf.x[4]]))
-                # --- FIX: Clip servo angles to ensure they are within the valid 0-180 range. ---
+                # Clip servo angles to ensure they are within the valid 0-180 range.
                 current_servo_sweep_start = np.clip(predicted_el - (TRACKING_SERVO_DEGREES / 2), 0, 180)
                 current_servo_sweep_end = np.clip(predicted_el + (TRACKING_SERVO_DEGREES / 2), 0, 180)
             
@@ -275,9 +275,21 @@ def main():
                     print(f"Calibration sweep {int(sweeps_completed * 2)} of {CALIBRATION_SWEEPS * 2} halfs completed...")
                     if sweeps_completed >= CALIBRATION_SWEEPS:
                         if calibration_distances:
-                            average_distance = statistics.mean(calibration_distances)
-                            print(f"\nCALIBRATION COMPLETE. Avg Dist: {average_distance:.2f} cm\n")
-                            # --- FIX: Clear the LiDAR queue after calibration. ---
+                            # --- FIX: Filter out outliers before calculating the average. ---
+                            mean = statistics.mean(calibration_distances)
+                            std_dev = statistics.stdev(calibration_distances)
+                            # Only keep data points within 2 standard deviations of the mean.
+                            filtered_distances = [d for d in calibration_distances if (mean - 2 * std_dev < d < mean + 2 * std_dev)]
+                            
+                            if filtered_distances:
+                                average_distance = statistics.mean(filtered_distances)
+                                print(f"\nCALIBRATION COMPLETE. Filtered Avg Dist: {average_distance:.2f} cm\n")
+                            else:
+                                # Fallback to raw average if filtering removes all data
+                                average_distance = mean
+                                print(f"\nCALIBRATION COMPLETE. Raw Avg Dist: {average_distance:.2f} cm\n")
+
+                            # Clear the LiDAR queue after calibration.
                             with lidar_data_queue.mutex:
                                 lidar_data_queue.queue.clear()
                             current_state = states[1]
