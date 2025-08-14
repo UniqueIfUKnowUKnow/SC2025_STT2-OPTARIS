@@ -11,7 +11,7 @@ from stepper_setup import setup_stepper_gpio
 from move_motors import *
 from calibration import *
 from tle_processing import parse_tle
-from initial_sweep import sweep_and_detect_anomaly
+from initial_sweep import sweep_scan_for_anomaly
 
 # --- Main Application ---
 def main():
@@ -44,6 +44,7 @@ def main():
     stepper_steps = 0
     current_azimuth = 0
     current_elevation = 0
+    anomaly_detected = False
 
     try:
         while True:
@@ -56,7 +57,7 @@ def main():
                 save_calibration_data(calibration_data)
 
                 # Moving to right of ascending node
-                move_to_polar_position(pi, tle_data["arg_perigee_deg"], 0, current_azimuth_steps=0)
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 0, stepper_steps)
 
                 calibration_done = True
                 if calibration_done:
@@ -65,13 +66,14 @@ def main():
             elif current_state == "SCANNING":
                 print("Scanning area...")
                 # scanning code here
-                anomaly_detected, anomaly_positions, final_azimuth_steps, final_elevation, final_azimuth_degrees = sweep_and_detect_anomaly(pi, lidar_data_queue, calibration_data, 
+                anomaly_detected, anomaly_positions, stepper_steps, current_elevation, current_azimuth = sweep_scan_for_anomaly
+                (pi, lidar_data_queue, calibration_data, 
                     stepper_steps, current_elevation,
-                    INITIAL_SWEEP_AZIMUTH_START, INITIAL_SWEEP_AZIMUTH_END,
-                    INITIAL_SWEEP_TILT_START, INITIAL_SWEEP_TILT_END,
+                    AZIMUTH_SWEEP_RANGES, ELEVATION_SWEEP_RANGES,
                     ANOMALY_THRESHOLD_FACTOR,
                     CONSECUTIVE_DETECTIONS_REQUIRED,
                     MAX_DISTANCE_CHANGE)
+                print(anomaly_detected)
 
                 target_detected = True
                 if target_detected:
