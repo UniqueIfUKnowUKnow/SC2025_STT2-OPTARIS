@@ -114,12 +114,27 @@ class LidarReader(threading.Thread):
         print("LiDAR Reader thread initialized.")
 
     def run(self):
+        """The main loop for the LiDAR reading thread."""
         while True:
-            if self.ser.read(1) == b'\x59' and self.ser.read(1) == b'\x59':
-                frame = b'\x59\x59' + self.ser.read(7)
-                if len(frame) == 9 and sum(frame[:-1]) & 0xFF == frame[8]:
-                    distance_cm = frame[2] + (frame[3] << 8)
-                    if distance_cm > 0: self.data_queue.put(distance_cm)
+            try:
+                # Check for the double header 0x59 0x59
+                if self.ser.in_waiting >= 9:
+                    if self.ser.read(1) == b'\x59' and self.ser.read(1) == b'\x59':
+                        # Read the rest of the 9-byte frame
+                        frame = b'\x59\x59' + self.ser.read(7)
+                        if len(frame) == 9 and sum(frame[:-1]) & 0xFF == frame[8]:
+                            distance_cm = frame[2] + (frame[3] << 8)
+                            if distance_cm > 0:
+                                self.data_queue.put(distance_cm)
+            except serial.SerialException as e:
+                # --- FIX: Catch the exception to prevent the thread from crashing ---
+                print(f"LiDAR Read Error: {e}. Re-syncing...")
+                # Flush the buffer to try and recover from the error
+                self.ser.flushInput()
+                time.sleep(0.5) # Pause briefly before trying again
+            # Add a small sleep to yield CPU time to other processes
+            time.sleep(0.001)
+
 
 # --- Setup and Control Functions (Unchanged) ---
 def setup_stepper_gpio():
