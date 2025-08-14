@@ -1,9 +1,9 @@
 # =================================================================
-# Python Trajectory Tracking with Kalman Filter
+# Python Trajectory Tracking with Unscented Kalman Filter
 #
 # Purpose: This script calibrates, finds 3 initial points, and then
-# enters a trajectory tracking mode using a Kalman filter to predict
-# the target's path and guide a narrow, fast scanning pattern.
+# enters a trajectory tracking mode using a 3D Unscented Kalman Filter
+# to predict the target's non-linear path.
 # =================================================================
 
 # --- Standard Library Imports ---
@@ -15,6 +15,12 @@ import threading
 import queue
 import statistics
 import numpy as np
+import math
+
+# --- Third-party library for Kalman Filter ---
+# You may need to install this: pip install filterpy
+from filterpy.kalman import UnscentedKalmanFilter
+from filterpy.kalman import MerweScaledSigmaPoints
 
 # --- Pin & Port Configuration (BCM numbering) ---
 # Stepper Motor Pins
@@ -40,16 +46,14 @@ MAX_PULSE_WIDTH = 2500
 SERVO_UPDATE_INTERVAL = 0.01
 
 # --- Scanning & Tracking Sweep Settings ---
-# Wide sweep for initial acquisition
 ACQUISITION_STEPPER_DEGREES = 40
 ACQUISITION_SERVO_START = 5
 ACQUISITION_SERVO_END = 25
 ACQUISITION_PULSE_DELAY = 0.0001
 
-# Narrow, fast sweep for tracking
 TRACKING_STEPPER_DEGREES = 20
 TRACKING_SERVO_DEGREES = 10
-TRACKING_PULSE_DELAY = 0.00005 # Faster pulse
+TRACKING_PULSE_DELAY = 0.00005
 
 # --- Calibration & Detection Settings ---
 CALIBRATION_SWEEPS = 2
@@ -57,36 +61,39 @@ DETECTION_THRESHOLD_FACTOR = 0.8
 DETECTION_CONFIDENCE_THRESHOLD = 5
 TOTAL_POINTS_TO_FIND = 3
 
-# --- Kalman Filter for Angular Tracking ---
-class KalmanTracker:
-    """A 1D Kalman filter to track an angle and its velocity."""
-    def __init__(self, process_noise=0.01, measurement_noise=0.1, dt=0.1):
-        # State: [angle, angular_velocity]
-        self.x = np.array([[0.0], [0.0]])
-        # State Covariance Matrix
-        self.P = np.eye(2)
-        # State Transition Matrix
-        self.F = np.array([[1, dt], [0, 1]])
-        # Measurement Matrix
-        self.H = np.array([[1, 0]])
-        # Measurement Noise Covariance
-        self.R = np.array([[measurement_noise]])
-        # Process Noise Covariance
-        self.Q = np.array([[process_noise, 0], [0, process_noise]])
+# --- Coordinate Conversion ---
+def spherical_to_cartesian(az, el, dist):
+    """Converts spherical coordinates (degrees, cm) to Cartesian (m)."""
+    az_rad = math.radians(az)
+    el_rad = math.radians(el)
+    dist_m = dist / 100.0
+    x = dist_m * math.cos(el_rad) * math.sin(az_rad)
+    y = dist_m * math.cos(el_rad) * math.cos(az_rad)
+    z = dist_m * math.sin(el_rad)
+    return x, y, z
 
-    def predict(self):
-        """Predicts the next state."""
-        self.x = self.F @ self.x
-        self.P = self.F @ self.P @ self.F.T + self.Q
-        return self.x[0, 0]
+def cartesian_to_spherical(x, y, z):
+    """Converts Cartesian coordinates (m) back to spherical (degrees, cm)."""
+    dist_m = math.sqrt(x**2 + y**2 + z**2)
+    el = math.degrees(math.atan2(z, math.sqrt(x**2 + y**2)))
+    az = math.degrees(math.atan2(x, y))
+    return az, el, dist_m * 100
 
-    def update(self, measurement):
-        """Updates the filter with a new measurement."""
-        y = measurement - (self.H @ self.x)
-        S = self.H @ self.P @ self.H.T + self.R
-        K = self.P @ self.H.T @ np.linalg.inv(S)
-        self.x = self.x + K * y
-        self.P = (np.eye(2) - K @ self.H) @ self.P
+# --- Unscented Kalman Filter Implementation ---
+# Define the non-linear state transition function (constant velocity model)
+def f_cv(x, dt):
+    F = np.array([[1, dt, 0,  0, 0,  0],
+                  [0,  1, 0,  0, 0,  0],
+                  [0,  0, 1, dt, 0,  0],
+                  [0,  0, 0,  1, 0,  0],
+                  [0,  0, 0,  0, 1, dt],
+                  [0,  0, 0,  0, 0,  1]])
+    return F @ x
+
+# Define the non-linear measurement function (Cartesian to Spherical)
+def h_spherical(x):
+    az, el, dist = cartesian_to_spherical(x[0], x[2], x[4])
+    return np.array([az, el, dist])
 
 # --- LiDAR Reader Thread (Unchanged) ---
 class LidarReader(threading.Thread):
@@ -134,6 +141,13 @@ def main():
     lidar_thread = LidarReader(LIDAR_SERIAL_PORT, LIDAR_BAUD_RATE, lidar_data_queue)
     lidar_thread.start()
 
+    # --- UKF Setup ---
+    dt = 0.1 # Time step
+    points = MerweScaledSigmaPoints(n=6, alpha=.1, beta=2., kappa=-1)
+    ukf = UnscentedKalmanFilter(dim_x=6, dim_z=3, dt=dt, hx=h_spherical, fx=f_cv, points=points)
+    ukf.R = np.diag([0.5, 0.5, 1.0]) # Measurement noise [az, el, dist]
+    ukf.Q = np.eye(6) * 0.01         # Process noise
+
     # --- State Machine and Variables ---
     states = ["CALIBRATING", "ASSURANCE_SCAN", "TRACKING", "FINISHED"]
     current_state = states[0]
@@ -153,13 +167,8 @@ def main():
     sweeps_completed, average_distance = 0, 0
     consecutive_detections = 0
 
-    # Kalman Filter instances
-    stepper_kalman = KalmanTracker()
-    servo_kalman = KalmanTracker()
-
     try:
         while current_state != "FINISHED":
-            # Determine current sweep parameters based on state
             is_tracking = current_state == "TRACKING"
             stepper_sweep_deg = TRACKING_STEPPER_DEGREES if is_tracking else ACQUISITION_STEPPER_DEGREES
             servo_sweep_start = ACQUISITION_SERVO_START
@@ -167,17 +176,13 @@ def main():
             pulse_delay = TRACKING_PULSE_DELAY if is_tracking else ACQUISITION_PULSE_DELAY
             steps_for_sweep = int((stepper_sweep_deg / 360.0) * STEPS_PER_REVOLUTION)
 
-            # --- Dynamic Center Point for Tracking ---
             if is_tracking:
-                # Predict the center of the sweep
-                predicted_stepper_center = stepper_kalman.predict()
-                predicted_servo_center = servo_kalman.predict()
-                # Define the sweep range around the predicted center
-                stepper_sweep_start = predicted_stepper_center - (stepper_sweep_deg / 2)
-                servo_sweep_start = predicted_servo_center - (TRACKING_SERVO_DEGREES / 2)
-                servo_sweep_end = predicted_servo_center + (TRACKING_SERVO_DEGREES / 2)
+                ukf.predict()
+                predicted_az, predicted_el, _ = cartesian_to_spherical(ukf.x[0], ukf.x[2], ukf.x[4])
+                stepper_sweep_start = predicted_az - (stepper_sweep_deg / 2)
+                servo_sweep_start = predicted_el - (TRACKING_SERVO_DEGREES / 2)
+                servo_sweep_end = predicted_el + (TRACKING_SERVO_DEGREES / 2)
             
-            # --- Motor Control ---
             GPIO.output(STEP_PIN, GPIO.HIGH)
             time.sleep(pulse_delay)
             GPIO.output(STEP_PIN, GPIO.LOW)
@@ -194,7 +199,6 @@ def main():
                     if servo_angle <= servo_sweep_start: servo_direction_up = True
                 set_servo_angle(pi, servo_angle)
 
-            # --- LiDAR Data & State Logic ---
             try:
                 distance = lidar_data_queue.get_nowait()
                 
@@ -204,9 +208,8 @@ def main():
                 elif distance < (average_distance * DETECTION_THRESHOLD_FACTOR):
                     consecutive_detections += 1
                     if consecutive_detections >= DETECTION_CONFIDENCE_THRESHOLD:
-                        # Calculate current angles
                         angle_offset = (stepper_steps_taken / steps_for_sweep) * stepper_sweep_deg
-                        stepper_center = 180 if not is_tracking else predicted_stepper_center
+                        stepper_center = 180 if not is_tracking else predicted_az
                         stepper_start = stepper_center - (stepper_sweep_deg / 2)
                         current_stepper_angle = stepper_start + angle_offset if stepper_direction_cw else stepper_start + stepper_sweep_deg - angle_offset
 
@@ -214,24 +217,22 @@ def main():
                         
                         if is_tracking:
                             print(f"TRACKING UPDATE: Dist:{distance}cm, Stepper:{current_stepper_angle:.1f}°, Servo:{servo_angle}°")
-                            stepper_kalman.update(current_stepper_angle)
-                            servo_kalman.update(servo_angle)
-                        else: # Assurance Scan
+                            ukf.update(np.array([current_stepper_angle, servo_angle, distance]))
+                        else:
                             detected_points.append(point_data)
                             print(f"TARGET POINT {len(detected_points)} DETECTED! Dist:{distance}cm, Stepper:{current_stepper_angle:.1f}°, Servo:{servo_angle}°")
                             if len(detected_points) >= TOTAL_POINTS_TO_FIND:
-                                print("\n--- INITIAL POINTS ACQUIRED, STARTING TRAJECTORY TRACKING ---")
-                                # Initialize Kalman filters with the first 3 points
+                                print("\n--- INITIALIZING UKF WITH FIRST 3 POINTS ---")
                                 for p in detected_points:
-                                    stepper_kalman.update(p["sa"])
-                                    servo_kalman.update(p["sv"])
-                                current_state = states[2] # Switch to TRACKING
+                                    x, y, z = spherical_to_cartesian(p["sa"], p["sv"], p["dist"])
+                                    ukf.x = np.array([x, 0, y, 0, z, 0])
+                                    ukf.update(np.array([p["sa"], p["sv"], p["dist"]]))
+                                current_state = states[2]
                 else:
                     consecutive_detections = 0
             except queue.Empty:
                 pass
 
-            # --- Sweep & State Transition ---
             if stepper_steps_taken >= steps_for_sweep:
                 stepper_steps_taken = 0
                 stepper_direction_cw = not stepper_direction_cw
@@ -245,7 +246,7 @@ def main():
                         if calibration_distances:
                             average_distance = statistics.mean(calibration_distances)
                             print(f"\nCALIBRATION COMPLETE. Avg Dist: {average_distance:.2f} cm\n")
-                            current_state = states[1] # Switch to ASSURANCE_SCAN
+                            current_state = states[1]
                             print(f"Current State: {current_state} (Finding {TOTAL_POINTS_TO_FIND} initial points)")
                         else:
                             print("Calibration Failed."); current_state = states[3]
