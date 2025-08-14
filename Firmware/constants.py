@@ -47,4 +47,7 @@ TRAJECTORY_UPDATE_THRESHOLD = 5.0  # cm - Minimum change needed to update trajec
 NARROW_SCAN_WIDTH = 20  # Degrees - Width of scan when following trajectory
 TRACKING_SPEED_MULTIPLIER = 1.5  # Speed increase for tracking mode
 
-
+# -----------------------
+satellite_name = "ISS (ZARYA)"
+line1 = "1 25544U 98067A   24225.51782528  .00016717  00000-0  30199-3 0  9992"
+line2 = "2 25544  51.6426  95.0936 0007310  21.6487  60.6990 15.50209251454141"

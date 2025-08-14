@@ -5,12 +5,12 @@ import time              # For creating delays
 import serial            # For reading data from the LiDAR's serial port
 import threading         # To run the LiDAR reader in the background
 import queue             # For thread-safe data sharing between threads
-import statistics        # For easily calculating the average distance
 from lidar_reader import LidarReader
 from constants import *
 from stepper_setup import setup_stepper_gpio
 from move_motors import *
 from calibration import *
+from tle_processing import parse_tle
 
 # --- Main Application ---
 def main():
@@ -29,6 +29,8 @@ def main():
     lidar_thread = LidarReader(LIDAR_SERIAL_PORT, LIDAR_BAUD_RATE, lidar_data_queue)
     lidar_thread.start()
 
+    elements = parse_tle([satellite_name, line1, line2])
+
     # --- State Machine and Variables ---
     states = ["CALIBRATING", "SCANNING", "DETECTED"]
     current_state = states[0]
@@ -36,27 +38,15 @@ def main():
 
     # Motor state variables
     stepper_steps_taken = 0
-    stepper_direction_cw = True
     GPIO.output(DIR_PIN, GPIO.HIGH)
     servo_angle = SERVO_SWEEP_START
-    servo_direction_up = True
     set_servo_angle(pi, servo_angle)
-    last_servo_update = time.time()
-    
-    # Data collection variables
-    calibration_distances = []
-    sweeps_completed = 0
-    average_distance = 0
-    
-    # --- FIX: New variable to track consecutive close readings. ---
-    consecutive_detections = 0
 
     try:
         #Mapping environment
         #calibration_data = calibrate_environment(pi, lidar_data_queue)
         #print(calibration_data)
         #save_calibration_data(calibration_data)
-        test_xyz_movement(pi)
 
         print("Scanning complete.")
         
@@ -67,6 +57,8 @@ def main():
         pi.set_servo_pulsewidth(SERVO_PIN, 0)
         pi.stop()
         GPIO.cleanup()
+        reset_stepper_pos(stepper_steps_taken)
+        
 
 if __name__ == '__main__':
     main()

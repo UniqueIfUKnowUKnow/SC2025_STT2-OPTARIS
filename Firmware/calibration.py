@@ -1,11 +1,9 @@
 # --- Standard Library Imports ---
 import RPi.GPIO as GPIO  # For direct control of stepper motor GPIO pins
-import pigpio            # For stable, hardware-based PWM for the servo
 import time              # For creating delays
 import threading         # To run the LiDAR reader in the background
 import queue             # For thread-safe data sharing between threads
 import csv               # For saving data to CSV files
-import json              # For saving data to JSON files
 from lidar_reader import LidarReader
 from constants import *
 from stepper_setup import setup_stepper_gpio
