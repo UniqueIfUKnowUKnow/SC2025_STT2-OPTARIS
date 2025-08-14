@@ -2,7 +2,7 @@
 # Python Custom Trajectory Tracker
 #
 # Purpose: This script calibrates the environment, acquires a target,
-# and then uses a custom, library-free algorithm to track and
+# and then uses a 3D Unscented Kalman Filter to track and
 # predict the trajectory of a moving (orbiting) object.
 # =================================================================
 
@@ -17,6 +17,11 @@ import statistics
 import math
 from collections import deque
 import numpy as np
+
+# --- Third-party library for Kalman Filter ---
+# You may need to install this: pip install filterpy
+from filterpy.kalman import UnscentedKalmanFilter
+from filterpy.kalman import MerweScaledSigmaPoints
 
 # --- Pin & Port Configuration (BCM numbering) ---
 # Stepper Motor Pins
@@ -74,51 +79,29 @@ def cartesian_to_spherical(point):
     x, y, z = point
     dist = math.sqrt(x**2 + y**2 + z**2)
     el = math.degrees(math.atan2(z, math.sqrt(x**2 + y**2)))
-    az = math.degrees(math.atan2(y, x)) # Use atan2(y, x) for standard azimuth
-    
-    # --- FIX: Ensure the azimuth angle is always positive (0-360 degrees). ---
+    az = math.degrees(math.atan2(y, x))
     if az < 0:
         az += 360
-        
     return az, el, dist
 
-# --- Custom Trajectory Tracker ---
-class SimpleTracker:
-    """
-    A custom, library-free tracker that predicts trajectory based on
-    a moving average of the target's velocity.
-    """
-    def __init__(self, history_size=5):
-        # Use a deque to automatically keep a fixed-size history of recent points.
-        self.point_history = deque(maxlen=history_size)
-        self.dt = 0.1 # Assume a time step for velocity calculation
+# --- Unscented Kalman Filter Implementation ---
+# Define the non-linear state transition function (constant velocity model)
+def f_cv(x, dt):
+    """State transition function for a 3D constant velocity model."""
+    F = np.array([[1, dt, 0,  0, 0,  0],
+                  [0,  1, 0,  0, 0,  0],
+                  [0,  0, 1, dt, 0,  0],
+                  [0,  0, 0,  1, 0,  0],
+                  [0,  0, 0,  0, 1, dt],
+                  [0,  0, 0,  0, 0,  1]])
+    return F @ x
 
-    def update(self, new_point):
-        """Adds a new 3D Cartesian point to the tracking history."""
-        self.point_history.append(new_point)
-
-    def predict(self):
-        """
-        Predicts the next 3D position of the target.
-        Returns the predicted point, or the last known point if no prediction is possible.
-        """
-        if len(self.point_history) < 2:
-            # Cannot predict without at least two points to establish velocity.
-            return self.point_history[-1] if self.point_history else np.array([0,0,0])
-
-        # Calculate an average velocity from the point history.
-        velocities = []
-        for i in range(len(self.point_history) - 1):
-            # Velocity = (P2 - P1) / dt
-            velocity = (self.point_history[i+1] - self.point_history[i]) / self.dt
-            velocities.append(velocity)
-        
-        # Average the calculated velocities for a smoother prediction.
-        avg_velocity = np.mean(velocities, axis=0)
-        
-        # Predict the next point: P_next = P_last + V_avg * dt
-        predicted_point = self.point_history[-1] + avg_velocity * self.dt
-        return predicted_point
+# Define the non-linear measurement function (Cartesian state to Spherical measurement)
+def h_spherical(x):
+    """Measurement function that converts a 3D Cartesian state (x,y,z)
+       into a spherical measurement (azimuth, elevation, distance)."""
+    az, el, dist = cartesian_to_spherical(np.array([x[0], x[2], x[4]]))
+    return np.array([az, el, dist])
 
 # --- LiDAR Reader Thread (Unchanged) ---
 class LidarReader(threading.Thread):
@@ -166,6 +149,19 @@ def main():
     lidar_thread = LidarReader(LIDAR_SERIAL_PORT, LIDAR_BAUD_RATE, lidar_data_queue)
     lidar_thread.start()
 
+    # --- UKF Setup ---
+    dt = 0.1 # Assumed time step
+    # Create sigma points
+    points = MerweScaledSigmaPoints(n=6, alpha=.1, beta=2., kappa=-1)
+    # Create the UKF
+    ukf = UnscentedKalmanFilter(dim_x=6, dim_z=3, dt=dt, hx=h_spherical, fx=f_cv, points=points)
+    # State vector is [x, vx, y, vy, z, vz]
+    ukf.x = np.zeros(6)
+    # Measurement noise (how much we trust the sensor)
+    ukf.R = np.diag([0.9, 0.9, 1.5]) # [az_noise, el_noise, dist_noise]
+    # Process noise (how much we trust our motion model)
+    ukf.Q = np.eye(6) * 0.03
+
     # --- State Machine and Variables ---
     states = ["CALIBRATING", "ASSURANCE_SCAN", "TRACKING", "FINISHED"]
     current_state = states[0]
@@ -185,15 +181,11 @@ def main():
     sweeps_completed, average_distance = 0, 0
     consecutive_detections = 0
 
-    # Custom Tracker instance
-    tracker = SimpleTracker()
-
     try:
         while current_state != "FINISHED":
             # Determine current sweep parameters based on state
             is_tracking = current_state == "TRACKING"
             stepper_sweep_deg = TRACKING_STEPPER_DEGREES if is_tracking else ACQUISITION_STEPPER_DEGREES
-            # --- FIX: Use local variables for sweep range to avoid confusion ---
             current_servo_sweep_start = ACQUISITION_SERVO_START
             current_servo_sweep_end = ACQUISITION_SERVO_END
             pulse_delay = TRACKING_PULSE_DELAY if is_tracking else ACQUISITION_PULSE_DELAY
@@ -201,11 +193,8 @@ def main():
 
             # --- Dynamic Center Point for Tracking ---
             if is_tracking:
-                predicted_point = tracker.predict()
-                predicted_az, predicted_el, _ = cartesian_to_spherical(predicted_point)
-                
-                # --- FIX: Define the free-roaming servo sweep range around the prediction ---
-                # The servo is now free to follow the target anywhere, not just in the acquisition zone.
+                ukf.predict()
+                predicted_az, predicted_el, _ = cartesian_to_spherical(np.array([ukf.x[0], ukf.x[2], ukf.x[4]]))
                 current_servo_sweep_start = predicted_el - (TRACKING_SERVO_DEGREES / 2)
                 current_servo_sweep_end = predicted_el + (TRACKING_SERVO_DEGREES / 2)
             
@@ -236,25 +225,28 @@ def main():
                 elif distance < (average_distance * DETECTION_THRESHOLD_FACTOR):
                     consecutive_detections += 1
                     if consecutive_detections >= DETECTION_CONFIDENCE_THRESHOLD:
-                        # Calculate current angles
                         stepper_center = 90 if not is_tracking else predicted_az
                         stepper_start = stepper_center - (stepper_sweep_deg / 2)
                         angle_offset = (stepper_steps_taken / steps_for_sweep) * stepper_sweep_deg
                         current_stepper_angle = stepper_start + angle_offset if stepper_direction_cw else stepper_start + stepper_sweep_deg - angle_offset
 
-                        # Convert to 3D point and update tracker
-                        current_point_3d = spherical_to_cartesian(current_stepper_angle, servo_angle, distance)
+                        measurement = np.array([current_stepper_angle, servo_angle, distance])
                         
                         if is_tracking:
-                            tracker.update(current_point_3d)
+                            ukf.update(measurement)
                             print(f"TRACKING UPDATE: Dist:{distance}cm, Stepper:{current_stepper_angle:.1f}°, Servo:{servo_angle}°")
                         else: # Assurance Scan
-                            tracker.update(current_point_3d) # Start populating history
-                            detected_points.append(current_point_3d)
+                            detected_points.append(measurement)
                             print(f"TARGET POINT {len(detected_points)} DETECTED! Dist:{distance}cm, Stepper:{current_stepper_angle:.1f}°, Servo:{servo_angle}°")
                             if len(detected_points) >= INITIAL_POINTS_TO_FIND:
-                                print("\n--- INITIAL POINTS ACQUIRED, STARTING TRAJECTORY TRACKING ---")
-                                current_state = states[2] # Switch to TRACKING
+                                print("\n--- INITIALIZING UKF WITH FIRST 3 POINTS ---")
+                                # Initialize UKF state with the first point
+                                x, y, z = spherical_to_cartesian(detected_points[0][0], detected_points[0][1], detected_points[0][2])
+                                ukf.x = np.array([x, 0, y, 0, z, 0])
+                                # Update with all initial points
+                                for p in detected_points:
+                                    ukf.update(p)
+                                current_state = states[2]
                 else:
                     consecutive_detections = 0
             except queue.Empty:
