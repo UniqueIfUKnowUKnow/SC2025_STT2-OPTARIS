@@ -65,7 +65,6 @@ def calibrate_environment(pi, lidar_data_queue):
         
         if sweep_forward:
             
-            print("Forward sweep")
             # reset_stepper_pos(stepper_steps_taken)
             target_steps = STEPS_FOR_SWEEP
             GPIO.output(DIR_PIN, GPIO.HIGH)
@@ -96,8 +95,6 @@ def calibrate_environment(pi, lidar_data_queue):
                     
         else:
             
-            
-            print("  Reverse sweep")
             # Reverse sweep: move from current position to 0°
             # reset_stepper_pos(stepper_steps_taken)
             target_steps = STEPS_FOR_SWEEP

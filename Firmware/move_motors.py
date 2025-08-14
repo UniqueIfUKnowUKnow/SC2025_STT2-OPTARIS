@@ -147,11 +147,11 @@ def test_xyz_movement(pi):
     
     # Test positions (x, y, z) in cm
     test_positions = [
-        (100, 0, 0),      # Straight ahead
-        (0, 100, 0),      # 90° right
-        (100, 100, 0),    # 45° right
-        (0, 0, 100),      # Straight up
-        (70, 70, 70),     # 45° right, 45° up
+        (1, 0, 0),      # Straight ahead
+        (0, 1, 0),      # 90° right
+        (0, -1, 0),    # 45° right
+        (0, 0, 1),      # Straight up
+        (1, 1, 1),     # 45° right, 45° up
         (-100, 0, 0),     # Behind (180°)
         (0, -100, 0),     # Left (270°)
         (50, 50, -30),    # 45° right, down (if servo allows)
