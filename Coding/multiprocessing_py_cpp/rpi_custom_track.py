@@ -78,7 +78,7 @@ def cartesian_to_spherical(point):
     """Converts a Cartesian point (cm) back to spherical (degrees, cm)."""
     x, y, z = point
     dist = math.sqrt(x**2 + y**2 + z**2)
-    el = math.degrees(math.atan2(z, math.sqrt(x**2 + y**2)))
+    el = math.degrees(math.atan2(z, np.sqrt(x**2 + y**2)))
     az = math.degrees(math.atan2(y, x))
     if az < 0:
         az += 360
@@ -103,7 +103,7 @@ def h_spherical(x):
     az, el, dist = cartesian_to_spherical(np.array([x[0], x[2], x[4]]))
     return np.array([az, el, dist])
 
-# --- LiDAR Reader Thread (Unchanged) ---
+# --- LiDAR Reader Thread ---
 class LidarReader(threading.Thread):
     def __init__(self, port, baudrate, data_queue):
         super().__init__(daemon=True)
@@ -127,7 +127,7 @@ class LidarReader(threading.Thread):
                             if distance_cm > 0:
                                 self.data_queue.put(distance_cm)
             except serial.SerialException as e:
-                # --- FIX: Catch the exception to prevent the thread from crashing ---
+                # Catch the exception to prevent the thread from crashing
                 print(f"LiDAR Read Error: {e}. Re-syncing...")
                 # Flush the buffer to try and recover from the error
                 self.ser.flushInput()
@@ -166,15 +166,10 @@ def main():
 
     # --- UKF Setup ---
     dt = 0.1 # Assumed time step
-    # Create sigma points
     points = MerweScaledSigmaPoints(n=6, alpha=.1, beta=2., kappa=-1)
-    # Create the UKF
     ukf = UnscentedKalmanFilter(dim_x=6, dim_z=3, dt=dt, hx=h_spherical, fx=f_cv, points=points)
-    # State vector is [x, vx, y, vy, z, vz]
     ukf.x = np.zeros(6)
-    # Measurement noise (how much we trust the sensor)
-    ukf.R = np.diag([0.9, 0.9, 1.5]) # [az_noise, el_noise, dist_noise]
-    # Process noise (how much we trust our motion model)
+    ukf.R = np.diag([0.9, 0.9, 1.5]) # Measurement noise [az, el, dist]
     ukf.Q = np.eye(6) * 0.03
 
     # --- State Machine and Variables ---
@@ -210,8 +205,9 @@ def main():
             if is_tracking:
                 ukf.predict()
                 predicted_az, predicted_el, _ = cartesian_to_spherical(np.array([ukf.x[0], ukf.x[2], ukf.x[4]]))
-                current_servo_sweep_start = predicted_el - (TRACKING_SERVO_DEGREES / 2)
-                current_servo_sweep_end = predicted_el + (TRACKING_SERVO_DEGREES / 2)
+                # --- FIX: Clip servo angles to ensure they are within the valid 0-180 range. ---
+                current_servo_sweep_start = np.clip(predicted_el - (TRACKING_SERVO_DEGREES / 2), 0, 180)
+                current_servo_sweep_end = np.clip(predicted_el + (TRACKING_SERVO_DEGREES / 2), 0, 180)
             
             # --- Motor Control ---
             GPIO.output(STEP_PIN, GPIO.HIGH)
@@ -281,6 +277,9 @@ def main():
                         if calibration_distances:
                             average_distance = statistics.mean(calibration_distances)
                             print(f"\nCALIBRATION COMPLETE. Avg Dist: {average_distance:.2f} cm\n")
+                            # --- FIX: Clear the LiDAR queue after calibration. ---
+                            with lidar_data_queue.mutex:
+                                lidar_data_queue.queue.clear()
                             current_state = states[1]
                             print(f"Current State: {current_state} (Finding {INITIAL_POINTS_TO_FIND} initial points)")
                         else:
