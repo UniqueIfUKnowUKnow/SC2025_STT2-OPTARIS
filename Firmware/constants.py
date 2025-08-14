@@ -47,6 +47,16 @@ TRAJECTORY_UPDATE_THRESHOLD = 5.0  # cm - Minimum change needed to update trajec
 NARROW_SCAN_WIDTH = 20  # Degrees - Width of scan when following trajectory
 TRACKING_SPEED_MULTIPLIER = 1.5  # Speed increase for tracking mode
 
+# --- Initial Detection Settings
+ANOMALY_THRESHOLD_FACTOR=0.7,
+CONSECUTIVE_DETECTIONS_REQUIRED=5,
+MAX_DISTANCE_CHANGE=50
+INITIAL_SWEEP_AZIMUTH_START=-10
+INITIAL_SWEEP_AZIMUTH_END=10
+INITIAL_SWEEP_TILT_START=0
+INITIAL_SWEEP_TILT_END=0
+
+
 # -----------------------
 satellite_name = "ISS (ZARYA)"
 line1 = "1 25544U 98067A   24225.51782528  .00016717  00000-0  30199-3 0  9992"
