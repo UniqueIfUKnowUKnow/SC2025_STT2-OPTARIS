@@ -159,7 +159,7 @@ def plot_2d_projections(csv_file):
 # Example usage
 if __name__ == "__main__":
     # Replace 'your_file.csv' with the actual path to your CSV file
-    csv_filename = 'lidar_calibration_20250814_194944.csv'
+    csv_filename = 'lidar_calibration_20250815_111410.csv'
     
     print("Plotting 3D points...")
     coords = plot_3d_points(csv_filename)

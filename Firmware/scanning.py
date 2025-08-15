@@ -83,7 +83,7 @@ def perform_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, curre
             continue
         
         # Check if we should change state during the sweep
-        if anomaly_count >= 3:
+        if anomaly_count >= INITIAL_SWEEP_DETECTIONS_COUNT:
             return current_azimuth, stepper_steps, anomaly_count, True
     
     return current_azimuth, stepper_steps, anomaly_count, False
@@ -91,7 +91,7 @@ def perform_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, curre
 
 def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_azimuth, 
                             current_elevation, stepper_steps, anomaly_locations, 
-                            anomaly_averaged_coords, anomaly_count):
+                            anomaly_averaged_coords, anomaly_count, detections_count):
     """
     Perform a complete scanning sequence (forward and reverse sweeps).
     
@@ -136,7 +136,7 @@ def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_az
     )
     
     # Final check for state change
-    if anomaly_count >= 3:
+    if anomaly_count >= detections_count:
         state_change = True
     
     return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, state_change
