@@ -61,7 +61,7 @@ function App() {
   const [appMode, setAppMode] = useState('simulation');
   
   // This stores the WebSocket connection URL - it's how our frontend talks to the Raspberry Pi backend
-  const [wsUrl, setWsUrl] = useState('ws://localhost:8765');
+  const [wsUrl, setWsUrl] = useState('ws://localhost:8080');
   
   // This tracks whether we're connected to the backend - 'connected', 'connecting', or 'disconnected'
   const [wsStatus, setWsStatus] = useState('disconnected');
