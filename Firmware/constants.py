@@ -48,13 +48,9 @@ NARROW_SCAN_WIDTH = 20  # Degrees - Width of scan when following trajectory
 TRACKING_SPEED_MULTIPLIER = 1.5  # Speed increase for tracking mode
 
 # --- Initial Detection Settings
-ANOMALY_THRESHOLD_FACTOR = 0.4
-CONSECUTIVE_DETECTIONS_REQUIRED = 5
-MAX_DISTANCE_CHANGE = 50
-INITIAL_SWEEP_AZIMUTH_START = -10
-INITIAL_SWEEP_AZIMUTH_END = 10
-INITIAL_SWEEP_TILT_START = 0
-INITIAL_SWEEP_TILT_END = 0
+DEFAULT_CALIBRATION_DISTANCE = 1200  # cm - adjust based on your environment
+ANOMALY_MAX_RADIUS = 3.0 # max degree range in which to average points
+SWEEP_RANGE = 10
 
 
 # -----------------------

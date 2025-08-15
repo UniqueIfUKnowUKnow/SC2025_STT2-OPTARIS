@@ -11,7 +11,7 @@ from stepper_setup import setup_stepper_gpio
 from move_motors import *
 from calibration import *
 from tle_processing import parse_tle
-from initial_sweep import sweep_scan_for_anomaly
+from anomaly_check import find_nearest_calibration_points
 
 # --- Main Application ---
 def main():
@@ -45,7 +45,7 @@ def main():
     current_azimuth = 0
     current_elevation = 0
     anomaly_detected = False
-
+    anomaly_locations = []
     try:
         while True:
             if current_state == "CALIBRATING":
@@ -64,11 +64,39 @@ def main():
                     current_state = states[1]
 
             elif current_state == "SCANNING":
+                
                 print("Scanning area...")
-                # scanning code here
+                GPIO.output(DIR_PIN, GPIO.HIGH)
 
-                print(anomaly_detected)
-                anomaly_detected = True
+                for i in range ( STEPS_PER_REVOLUTION * SWEEP_RANGE / 360 ):
+                    # scanning code here
+                    stepper_step()
+                    stepper_steps += 1
+                    current_azimuth += (stepper_steps/STEPS_PER_REVOLUTION)*360
+                    reference = find_nearest_calibration_points(current_azimuth, current_elevation, calibration_data)
+                    distance = lidar_data_queue.get_nowait()
+                    if distance < reference * ANOMALY_FACTOR:
+                        anomaly_locations.append(distance, current_azimuth, current_elevation)
+                    if len(anomaly_locations) > 3:
+                        anomaly_detected = True
+                        
+                if anomaly_detected:
+                    current_state = states[2]
+                
+                GPIO.output(DIR_PIN, GPIO.LOW)
+                for i in range ( STEPS_PER_REVOLUTION * SWEEP_RANGE / 360 ):
+
+                    # scanning code here
+                    stepper_step()
+                    stepper_steps -= 1
+                    current_azimuth += (stepper_steps/STEPS_PER_REVOLUTION)*360
+                    reference = find_nearest_calibration_points(current_azimuth, current_elevation, calibration_data)
+                    distance = lidar_data_queue.get_nowait()
+                    if distance < reference * ANOMALY_FACTOR:
+                        anomaly_locations.append(distance, current_azimuth, current_elevation)
+                    if len(anomaly_locations) > 3:
+                        anomaly_detected = True
+                        
                 if anomaly_detected:
                     current_state = states[2]
 
