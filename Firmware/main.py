@@ -71,7 +71,7 @@ def main():
                 save_calibration_data(calibration_data)
 
                 # Moving to right of ascending node
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 30 , stepper_steps)
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
 
                 calibration_done = True
                 if calibration_done:
@@ -95,6 +95,7 @@ def main():
                 for dist, az_deg, el_deg in first_scan_positions:
                     initial_rad.append([dist, np.radians(az_deg), np.radians(el_deg)])
                 
+                anomaly_count = 0
                 print(anomaly_averaged_coords)
                 if should_change_state:
                     anomaly_averaged_coords = []
@@ -125,6 +126,7 @@ def main():
                     current_measurement = [anomaly_averaged_coords[0], anomaly_averaged_coords[1], anomaly_averaged_coords[2]]
                     kf.update_with_delayed_measurement(current_measurement, anomaly_averaged_coords[3])
                     
+                    anomaly_count = 0
                     locked_in += 1
                     plot_data.append((current_measurement[0], current_measurement[1], current_measurement[2]))
                 save_calibration_data(plot_data)
