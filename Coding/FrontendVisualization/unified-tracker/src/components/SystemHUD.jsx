@@ -42,6 +42,7 @@ const ControlButton = ({ onClick, disabled, children, className }) => (
 // Main SystemHUD component - This renders all the control panels and information displays
 const SystemHUD = ({
   currentView,                    // Which view we're currently showing ('global' or 'local')
+  appMode,                        // Current application mode ('simulation' or 'real')
   status,                        // Current system status (e.g., "TRACKING_TARGET", "SEARCHING")
   progress,                      // Progress percentage for operations (0-100%)
   warning,                       // Any warning messages from the system
@@ -56,7 +57,9 @@ const SystemHUD = ({
   onSwitchView,                  // Function to call when switching between global and local views
   onStart,                       // Function to call when the Start button is clicked
   onStop,                        // Function to call when the Stop button is clicked
-  onReset                        // Function to call when the Reset button is clicked
+  onReset,                       // Function to call when the Reset button is clicked
+  onModeChange,                  // NEW: Function to call when mode changes
+  onTestConnection               // NEW: Function to test WebSocket connection
 }) => {
   // Extract orbital elements from the predicted orbit parameters
   const elements = getOrbitalElements(predictedOrbitParams);
@@ -67,6 +70,9 @@ const SystemHUD = ({
 
   // State for the current date and time - this updates every second
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
+  
+  // NEW: State for mode selection
+  const [selectedMode, setSelectedMode] = useState(appMode || 'simulation');
 
   // Collapsible state for panels
   const [showOrbit, setShowOrbit] = useState(false);
@@ -79,6 +85,11 @@ const SystemHUD = ({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Effect to sync selectedMode with appMode prop
+  useEffect(() => {
+    setSelectedMode(appMode || 'simulation');
+  }, [appMode]);
 
   // Function to format the date in a readable way (e.g., "January 15, 2024")
   const formatDate = (date) => {
@@ -100,123 +111,337 @@ const SystemHUD = ({
     });
   };
 
+  // NEW: Function to get mode-specific button states
+  const getButtonStates = () => {
+    if (selectedMode === 'real') {
+      // In Real Mode, buttons are disabled as the Raspberry Pi controls the process
+      return {
+        startDisabled: true,
+        stopDisabled: true,
+        resetDisabled: true,
+        startTooltip: 'In Real Mode, the scanning process is controlled by the Raspberry Pi',
+        stopTooltip: 'In Real Mode, the scanning process is controlled by the Raspberry Pi',
+        resetTooltip: 'In Real Mode, the scanning process is controlled by the Raspberry Pi'
+      };
+    } else {
+      // In Simulation Mode, buttons work normally
+      return {
+        startDisabled: isRunning,
+        stopDisabled: !isRunning,
+        resetDisabled: false,
+        startTooltip: 'Start the simulation',
+        stopTooltip: 'Stop the simulation',
+        resetTooltip: 'Reset all data and return to standby'
+      };
+    }
+  };
+
+  const buttonStates = getButtonStates();
+
   // This is what gets displayed on the screen
   return (
-    <>
-      {/* Main HUD Overlay - This contains all the control panels and information displays */}
-      <div className="hud-overlay">
+    <div className="system-hud">
+      {/* Left Panel - System Status and Controls */}
+      <div className="left-panel">
         
-        {/* LEFT SIDE PANELS - These are positioned on the left side of the screen */}
-        <div className="left-panels">
+        {/* NEW: Mode Selection Panel */}
+        <div className="mode-panel">
+          <h3>Operation Mode</h3>
+          <div className="mode-options">
+            <label className="mode-option">
+              <input
+                type="radio"
+                name="mode"
+                value="simulation"
+                checked={selectedMode === 'simulation'}
+                onChange={(e) => {
+                  setSelectedMode(e.target.value);
+                  onModeChange?.(e.target.value);
+                }}
+              />
+              <span className="mode-label">Simulation Mode</span>
+              <span className="mode-description">Run with simulated data for testing and development</span>
+            </label>
+            
+            <label className="mode-option">
+              <input
+                type="radio"
+                name="mode"
+                value="real"
+                checked={selectedMode === 'real'}
+                onChange={(e) => {
+                  setSelectedMode(e.target.value);
+                  onModeChange?.(e.target.value);
+                }}
+              />
+              <span className="mode-label">Real Mode</span>
+              <span className="mode-description">Connect to actual Raspberry Pi hardware for live data</span>
+            </label>
+          </div>
+        </div>
+        
+        {/* System Status Panel - Shows current status, connection info, and WebSocket settings */}
+        <div className="status-panel">
+          <h3>System Status</h3>
           
-          {/* System Control Panel - Contains Start, Stop, Reset, and View Switch buttons */}
-          <div className="hud-panel hud-control">
-            <h3>System Control</h3>
-            
-            {/* Control buttons for starting, stopping, and resetting the system */}
-            <div className="control-buttons">
-              <ControlButton onClick={onStart} className="start-btn">
-                Start
-              </ControlButton>
-              <ControlButton onClick={onStop} disabled={!isRunning} className="stop-btn">
-                Stop
-              </ControlButton>
-              <ControlButton onClick={onReset} className="reset-btn">
-                Reset
-              </ControlButton>
+          {/* Current Status */}
+          <div className="status-item">
+            <span className="status-label">Status:</span>
+            <span className={`status-value ${status?.toLowerCase().replace(/\s+/g, '-')}`}>
+              {status || 'STANDBY'}
+            </span>
+          </div>
+          
+          {/* Progress Bar */}
+          {progress > 0 && (
+            <div className="progress-item">
+              <span className="progress-label">Progress:</span>
+              <div className="progress-bar">
+                <div 
+                  className="progress-fill" 
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <span className="progress-text">{progress}%</span>
             </div>
+          )}
+          
+          {/* NEW: Real Mode Status Display */}
+          {selectedMode === 'real' && (
+            <div className="real-mode-status">
+              <div className="status-item">
+                <span className="status-label">WebSocket:</span>
+                <span className={`status-value ${wsStatus}`}>
+                  {wsStatus === 'connected' ? 'Connected' : 
+                   wsStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+                </span>
+              </div>
+              
+              {/* WebSocket URL input field and Connect button */}
+              <div className="websocket-config">
+                <label htmlFor="wsUrl">WebSocket URL:</label>
+                <input
+                  id="wsUrl"
+                  type="text"
+                  value={wsUrl}
+                  onChange={(e) => onWsUrlChange?.(e.target.value)}
+                  placeholder="ws://192.168.1.100:8765"
+                  aria-label="WebSocket connection URL"
+                />
+                <div className="websocket-buttons">
+                  <button 
+                    className="connect-button"
+                    onClick={onReconnect}
+                    disabled={wsStatus === 'connecting'}
+                  >
+                    {wsStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+                  </button>
+                  <button 
+                    className="test-button"
+                    onClick={onTestConnection}
+                    disabled={wsStatus === 'connecting'}
+                    title="Test connection without establishing full connection"
+                  >
+                    Test
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Warnings and Errors */}
+          {warning && (
+            <div className="warning-item">
+              <span className="warning-icon">⚠️</span>
+              <span className="warning-text">{warning}</span>
+            </div>
+          )}
+          
+          {error && (
+            <div className="error-item">
+              <span className="error-icon">❌</span>
+              <span className="error-text">{error}</span>
+            </div>
+          )}
+        </div>
+        
+        {/* Control Panel - Buttons for controlling the system */}
+        <div className="control-panel">
+          <h3>Controls</h3>
+          
+          {/* NEW: Mode-specific control buttons */}
+          <div className="control-buttons">
+            <ControlButton
+              onClick={onStart}
+              disabled={buttonStates.startDisabled}
+              className="control-button start-button"
+              title={buttonStates.startTooltip}
+            >
+              Start
+            </ControlButton>
             
-            {/* View switching button - allows users to switch between global and local views */}
-            <div className="view-switch">
-              <ControlButton onClick={onSwitchView} className="switch-btn">
-                Switch to {currentView === 'global' ? 'Local' : 'Global'} View
-              </ControlButton>
+            <ControlButton
+              onClick={onStop}
+              disabled={buttonStates.stopDisabled}
+              className="control-button stop-button"
+              title={buttonStates.stopTooltip}
+            >
+              Stop
+            </ControlButton>
+            
+            <ControlButton
+              onClick={onReset}
+              disabled={buttonStates.resetDisabled}
+              className="control-button reset-button"
+              title={buttonStates.resetTooltip}
+            >
+              Reset
+            </ControlButton>
+          </div>
+          
+          {/* View switching */}
+          <div className="view-controls">
+            <button 
+              className={`view-button ${currentView === 'global' ? 'active' : ''}`}
+              onClick={() => onSwitchView()}
+            >
+              Global View
+            </button>
+            <button 
+              className={`view-button ${currentView === 'local' ? 'active' : ''}`}
+              onClick={() => onSwitchView()}
+            >
+              Local View
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Panel - Data Display and Telemetry */}
+      <div className="right-panel">
+        
+        {/* Position Data Panel */}
+        <div className="data-panel">
+          <h3>Position Data</h3>
+          
+          {/* Measured Position */}
+          <div className="data-item">
+            <span className="data-label">Measured Position:</span>
+            <span className="data-value">
+              {measuredPosition ? 
+                `X: ${formatValue(measuredPosition[0], 'm')}, Y: ${formatValue(measuredPosition[1], 'm')}, Z: ${formatValue(measuredPosition[2], 'm')}` : 
+                'No data'
+              }
+            </span>
+          </div>
+          
+          {/* NEW: Enhanced Live Telemetry for Real Mode */}
+          <div className="telemetry-section">
+            <h4>Live Telemetry</h4>
+            <div className="telemetry-grid">
+              <div className="telemetry-item">
+                <span className="telemetry-label">Pan Angle:</span>
+                <span className="telemetry-value">
+                  {formatValue(liveTelemetry?.pan_angle, '°')}
+                </span>
+              </div>
+              <div className="telemetry-item">
+                <span className="telemetry-label">Tilt Angle:</span>
+                <span className="telemetry-value">
+                  {formatValue(liveTelemetry?.tilt_angle, '°')}
+                </span>
+              </div>
+              <div className="telemetry-item">
+                <span className="telemetry-label">Distance:</span>
+                <span className="telemetry-value">
+                  {formatValue(liveTelemetry?.distance, 'm')}
+                </span>
+              </div>
+              <div className="telemetry-item">
+                <span className="telemetry-label">Signal Strength:</span>
+                <span className="telemetry-value">
+                  {formatValue(liveTelemetry?.signal_strength, '%')}
+                </span>
+              </div>
             </div>
           </div>
-
-          {/* System Status Panel - Shows current status, connection info, and WebSocket settings */}
-          <div className="hud-panel hud-status">
-            <h3>System Status</h3>
+        </div>
+        
+        {/* Orbital Parameters Panel */}
+        {predictedOrbitParams && (
+          <div className="data-panel">
+            <h3>Orbital Parameters</h3>
             
-            {/* Current system status display */}
-            <div className="status-line">
-              <span>Status:</span>
-              <span className="status-value">{status || 'UNKNOWN'}</span>
-            </div>
-            
-            {/* WebSocket connection status */}
-            <div className="status-line">
-              <span>Connection:</span>
-              <span className={`status-value ${wsStatus === 'connected' ? 'connected' : 'disconnected'}`}>
-                {wsStatus}
-              </span>
-            </div>
-            
-            {/* WebSocket URL input field and Connect button */}
-            {/* This allows users to change the connection URL and reconnect */}
-            <div className="ws-url-row">
-              <span className="ws-url-label">WS URL:</span>
-              <input
-                className="ws-url-input"
-                value={wsUrl}
-                onChange={(e) => onWsUrlChange?.(e.target.value)}
-                placeholder="ws://192.168.1.100:8765"
-                // This makes the input field accessible to screen readers
-                aria-label="WebSocket connection URL"
-              />
-              <button className="connect-btn" onClick={onReconnect}>Connect</button>
-            </div>
-            
-            {/* Warning messages from the system */}
-            {warning && (
-              <div className="warning-text">Warning: {warning}</div>
+            {/* Semi-major Axis */}
+            {elements.semiMajorAxis && (
+              <div className="data-item">
+                <span className="data-label">Semi-major Axis:</span>
+                <span className="data-value">
+                  {formatValue(elements.semiMajorAxis, ' km')}
+                </span>
+              </div>
             )}
             
-            {/* Error messages from the system */}
-            {error && (
-              <div className="error-text">Error: {error}</div>
+            {/* Eccentricity */}
+            {elements.eccentricity && (
+              <div className="data-item">
+                <span className="data-label">Eccentricity:</span>
+                <span className="data-value">
+                  {formatValue(elements.eccentricity, '', 4)}
+                </span>
+              </div>
             )}
             
-            {/* Progress bar for operations that take time */}
-            {(status && status.includes('PROGRESS')) && (
-              <div className="progress-container">
-                <progress value={progress} max="100" />
-                <span>{progress}%</span>
+            {/* Inclination */}
+            {elements.inclination && (
+              <div className="data-item">
+                <span className="data-label">Inclination:</span>
+                <span className="data-value">
+                  {formatValue(elements.inclination, '°')}
+                </span>
+              </div>
+            )}
+            
+            {/* Argument of Perigee */}
+            {elements.argumentOfPerigee && (
+              <div className="data-item">
+                <span className="data-label">Argument of Perigee:</span>
+                <span className="data-value">
+                  {formatValue(elements.argumentOfPerigee, '°')}
+                </span>
+              </div>
+            )}
+            
+            {/* Right Ascension of Ascending Node */}
+            {elements.rightAscensionOfAscendingNode && (
+              <div className="data-item">
+                <span className="data-label">RAAN:</span>
+                <span className="data-value">
+                  {formatValue(elements.rightAscensionOfAscendingNode, '°')}
+                </span>
+              </div>
+            )}
+            
+            {/* Mean Anomaly */}
+            {elements.meanAnomaly && (
+              <div className="data-item">
+                <span className="data-label">Mean Anomaly:</span>
+                <span className="data-value">
+                  {formatValue(elements.meanAnomaly, '°')}
+                </span>
               </div>
             )}
           </div>
-
-          {/* Target Data Panel - Shows current position and sensor readings */}
-          <div className="hud-panel hud-data">
-            <h3>Target Data</h3>
-            
-            {/* Current target position in 3D coordinates */}
-            <div className="data-item">
-              <span>Current Position:</span>
-              <span className="data-value">
-                {measuredPosition 
-                  ? `${formatValue(measuredPosition[0], ' km')}, ${formatValue(measuredPosition[1], ' km')}, ${formatValue(measuredPosition[2], ' km')}`
-                  : 'N/A'
-                }
-              </span>
-            </div>
-            
-            {/* Distance to the target */}
-            <div className="data-item">
-              <span>Distance:</span>
-              <span className="data-value">
-                {formatValue(liveTelemetry?.distance, ' m')}
-              </span>
-            </div>
-            
-            {/* Signal strength from the LiDAR sensor */}
-            <div className="data-item">
-              <span>Signal Strength:</span>
-              <span className="data-value">
-                {formatValue(liveTelemetry?.signal_strength, ' %')}
-              </span>
-            </div>
+        )}
+        
+        {/* Date and Time Panel */}
+        <div className="data-panel">
+          <h3>Date & Time</h3>
+          <div className="data-item">
+            <span className="data-label">Date:</span>
+            <span className="data-value">{formatDate(currentDateTime)}</span>
           </div>
+<<<<<<< HEAD
         </div>
 
         {/* RIGHT SIDE PANELS - These are positioned on the right side of the screen */}
@@ -329,21 +554,15 @@ const SystemHUD = ({
                 )}
               </>
             )}
+=======
+          <div className="data-item">
+            <span className="data-label">Time:</span>
+            <span className="data-value">{formatTime(currentDateTime)}</span>
+>>>>>>> 4f56bc0eaf5c8202c0eee27f341501512cfe7ee3
           </div>
         </div>
       </div>
-
-      {/* Date and Time Display - Fixed at the bottom of the screen */}
-      {/* This shows the current date and time, updating every second */}
-      <div className="datetime-overlay">
-        <div className="date-display">
-          {formatDate(currentDateTime)}
-        </div>
-        <div className="time-display">
-          {formatTime(currentDateTime)}
-        </div>
-      </div>
-    </>
+    </div>
   );
 };
 

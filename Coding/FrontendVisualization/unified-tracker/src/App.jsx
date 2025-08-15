@@ -57,6 +57,9 @@ function App() {
   // This tracks the current date and time for display
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   
+  // NEW: This tracks the current application mode (simulation or real)
+  const [appMode, setAppMode] = useState('simulation');
+  
   // This stores the WebSocket connection URL - it's how our frontend talks to the Raspberry Pi backend
   const [wsUrl, setWsUrl] = useState('ws://localhost:8765');
   
@@ -128,8 +131,20 @@ function App() {
   }, []);
 
   // This effect manages the WebSocket connection to the Raspberry Pi backend
-  // It runs once when the component mounts and when wsUrl changes
+  // It runs once when the component mounts and when wsUrl or appMode changes
   useEffect(() => {
+    // NEW: Only establish WebSocket connection in Real Mode
+    if (appMode !== 'real') {
+      console.log('App: Simulation mode - no WebSocket connection needed');
+      // Clear any existing WebSocket connection
+      if (wsRef.current) {
+        wsRef.current.stop();
+        wsRef.current = null;
+      }
+      setWsStatus('disconnected');
+      return;
+    }
+    
     console.log('App: Setting up WebSocket connection to:', wsUrl);
     
     // If we already have a WebSocket connection, stop it first
@@ -145,6 +160,14 @@ function App() {
       onStatusChange: (status) => {
         console.log('App: WebSocket status changed to:', status);
         setWsStatus(status);
+        
+        // Clear any previous warnings/errors when connection status changes
+        if (status === 'connected') {
+          setWarning(null);
+          setError(null);
+        } else if (status === 'error') {
+          setError(`Failed to connect to ${wsUrl}. Check if the server is running and accessible.`);
+        }
       },
       onMessage: (msg) => {
         console.log('App: Received WebSocket message:', msg);
@@ -167,15 +190,18 @@ function App() {
         client.stop();
       }
     };
-  }, [wsUrl]); // This effect runs whenever wsUrl changes
+  }, [wsUrl, appMode]); // This effect runs whenever wsUrl or appMode changes
 
   // Function to handle when the user clicks the start button on the start screen
+  // Modified to handle simple start without mode parameters
   const handleStartApp = () => {
-    console.log('App: handleStartApp called');
+    console.log('App: Starting application');
+    setAppMode('simulation'); // Default to simulation mode
+    setWsUrl('ws://localhost:8765'); // Default WebSocket URL
     setShowStartScreen(false);  // Hide the start screen
     setIsSceneLoading(true);    // Show loading scene to prevent white screen crash
     setCurrentView('global');   // Show the global view (Earth) by default
-    console.log('App: State set - showStartScreen: false, isSceneLoading: true');
+    console.log('App: State set - showStartScreen: false, isSceneLoading: true, appMode: simulation');
   };
 
   // Function to handle when the loading scene completes
@@ -199,88 +225,241 @@ function App() {
   // Function to handle when the user clicks on the ground station marker in the global view
   // This automatically switches to the local view so they can see the LiDAR tracker
   const handleGroundStationClick = () => {
+    console.log('App: Ground station clicked, switching to local view');
     setCurrentView('local');
   };
 
-  // Function to handle when the user clicks the Start button in the control panel
-  // This sends a 'start' command to the Raspberry Pi backend
+  // Function to handle when the user clicks the Start button in the SystemHUD
+  // This starts the tracking process
   const handleStart = () => {
-    console.log('App: Start button clicked, sending start command');
+    console.log('App: handleStart called');
+    
+    // NEW: In Real Mode, we can't manually start - it's controlled by the Raspberry Pi
+    if (appMode === 'real') {
+      console.log('App: Real Mode - Start button disabled, process controlled by Raspberry Pi');
+      setWarning('In Real Mode, the scanning process is controlled by the Raspberry Pi. Use the backend script to start operations.');
+      return;
+    }
+    
+    // In Simulation Mode, start the simulation
     if (wsRef.current) {
-      const command = { command: 'start' };
-      console.log('App: Sending command:', command);
-      wsRef.current.send(command);
+      console.log('App: Sending start command via WebSocket');
+      wsRef.current.send({ command: 'start' });
     } else {
       console.warn('App: No WebSocket connection available');
+      // Fallback: start simulation locally
+      setStatus('SEARCHING_FOR_TARGET');
+      setProgress(0);
     }
   };
 
-  // Function to handle when the user clicks the Stop button in the control panel
-  // This sends a 'stop' command to the Raspberry Pi backend
+  // Function to handle when the user clicks the Stop button in the SystemHUD
+  // This stops the tracking process
   const handleStop = () => {
-    console.log('App: Stop button clicked, sending stop command');
+    console.log('App: handleStop called');
+    
+    // NEW: In Real Mode, we can't manually stop - it's controlled by the Raspberry Pi
+    if (appMode === 'real') {
+      console.log('App: Real Mode - Stop button disabled, process controlled by Raspberry Pi');
+      setWarning('In Real Mode, the scanning process is controlled by the Raspberry Pi. Use the backend script to stop operations.');
+      return;
+    }
+    
     if (wsRef.current) {
-      const command = { command: 'stop' };
-      console.log('App: Sending command:', command);
-      wsRef.current.send(command);
+      console.log('App: Sending stop command via WebSocket');
+      wsRef.current.send({ command: 'stop' });
     } else {
       console.warn('App: No WebSocket connection available');
+      // Fallback: stop simulation locally
+      setStatus('STANDBY');
+      setProgress(0);
     }
   };
 
-  // Function to handle when the user clicks the Reset button in the control panel
-  // This clears all data and sends a 'reset' command to the Raspberry Pi backend
+  // Function to handle when the user clicks the Reset button in the SystemHUD
+  // This resets all data and returns to standby
   const handleReset = () => {
-    console.log('App: Reset button clicked, sending reset command');
-    clearForReset();  // Clear all data in our frontend
+    console.log('App: handleReset called');
+    
+    // NEW: In Real Mode, we can't manually reset - it's controlled by the Raspberry Pi
+    if (appMode === 'real') {
+      console.log('App: Real Mode - Reset button disabled, process controlled by Raspberry Pi');
+      setWarning('In Real Mode, the scanning process is controlled by the Raspberry Pi. Use the backend script to reset operations.');
+      return;
+    }
+    
     if (wsRef.current) {
-      const command = { command: 'reset' };
-      console.log('App: Sending command:', command);
-      wsRef.current.send(command);  // Tell the backend to reset too
+      console.log('App: Sending reset command via WebSocket');
+      wsRef.current.send({ command: 'reset' });
     } else {
       console.warn('App: No WebSocket connection available');
+      // Fallback: reset locally
+      clearForReset();
     }
   };
 
   // Function to handle when the user changes the WebSocket URL in the input field
-  const handleWsUrlChange = (newUrl) => {
-    setWsUrl(newUrl);
-  };
-
-  // Function to handle when the user clicks the Connect button
   // This creates a new WebSocket connection with the new URL
-  const handleReconnect = () => {
-    // Stop the current connection if it exists
+  const handleWsUrlChange = (newUrl) => {
+    console.log('App: WebSocket URL changed to:', newUrl);
+    setWsUrl(newUrl);
+    
+    // NEW: Only reconnect if we're in Real Mode
+    if (appMode !== 'real') {
+      console.log('App: Simulation mode - no WebSocket reconnection needed');
+      return;
+    }
+    
+    // If we have an existing WebSocket connection, stop it
     if (wsRef.current) {
-      try { 
-        wsRef.current.stop(); 
-      } catch {} // Ignore any errors during shutdown
+      console.log('App: Stopping existing WebSocket connection for URL change');
+      wsRef.current.stop();
+      wsRef.current = null;
     }
     
     // Create a new WebSocket client with the updated URL
     const client = new SensorWebSocket({
-      url: wsUrl,
-      onStatusChange: setWsStatus,
-      onMessage: (msg) => updateData(msg),
+      url: newUrl, // FIXED: Use newUrl instead of wsUrl
+      onStatusChange: (status) => {
+        console.log('App: New WebSocket status changed to:', status);
+        setWsStatus(status);
+      },
+      onMessage: (msg) => {
+        console.log('App: Received message from new WebSocket:', msg);
+        updateData(msg);
+      },
     });
     
-    // Store the new client reference
+    // Store the new WebSocket client reference
     wsRef.current = client;
     
     // Start the new connection
+    console.log('App: Starting new WebSocket connection with updated URL');
     client.start();
   };
 
-  // If we're showing the start screen, render just that
+  // Function to handle when the user clicks the Connect button in the SystemHUD
+  // This attempts to reconnect to the WebSocket server
+  const handleReconnect = () => {
+    console.log('App: handleReconnect called');
+    
+    // NEW: Only reconnect if we're in Real Mode
+    if (appMode !== 'real') {
+      console.log('App: Simulation mode - no WebSocket reconnection needed');
+      setWarning('Please switch to Real Mode to connect to WebSocket');
+      return;
+    }
+    
+    console.log('App: Attempting to connect to WebSocket at:', wsUrl);
+    
+    if (wsRef.current) {
+      console.log('App: Stopping existing WebSocket connection for reconnection');
+      wsRef.current.stop();
+      wsRef.current = null;
+    }
+    
+    // Create a new WebSocket client
+    const client = new SensorWebSocket({
+      url: wsUrl, // This is correct here since we're reconnecting to the current URL
+      onStatusChange: (status) => {
+        console.log('App: Reconnected WebSocket status changed to:', status);
+        setWsStatus(status);
+        
+        // Clear any previous warnings/errors when connection status changes
+        if (status === 'connected') {
+          setWarning(null);
+          setError(null);
+        } else if (status === 'error') {
+          setError(`Failed to connect to ${wsUrl}. Check if the server is running and accessible.`);
+        }
+      },
+      onMessage: (msg) => {
+        console.log('App: Received message from reconnected WebSocket:', msg);
+        updateData(msg);
+      },
+    });
+    
+    // Store the new WebSocket client reference
+    wsRef.current = client;
+    
+    // Start the new connection
+    console.log('App: Starting reconnected WebSocket connection');
+    client.start();
+  };
+
+  // NEW: Function to handle mode changes from SystemHUD
+  const handleModeChange = (newMode) => {
+    console.log('App: Mode changed to:', newMode);
+    setAppMode(newMode);
+    
+    // If switching to simulation mode, disconnect WebSocket
+    if (newMode === 'simulation') {
+      if (wsRef.current) {
+        console.log('App: Switching to simulation mode - stopping WebSocket');
+        wsRef.current.stop();
+        wsRef.current = null;
+      }
+      setWsStatus('disconnected');
+      setWarning(null);
+      setError(null);
+    }
+    // If switching to real mode, establish WebSocket connection
+    else if (newMode === 'real') {
+      console.log('App: Switching to real mode - establishing WebSocket connection');
+      // The useEffect will handle the WebSocket connection
+    }
+  };
+
+  // NEW: Function to test WebSocket connection
+  const testWebSocketConnection = () => {
+    console.log('App: Testing WebSocket connection to:', wsUrl);
+    
+    if (appMode !== 'real') {
+      setWarning('Please switch to Real Mode to test WebSocket connection');
+      return;
+    }
+    
+    // Create a temporary WebSocket to test the connection
+    const testSocket = new WebSocket(wsUrl);
+    
+    testSocket.onopen = () => {
+      console.log('App: Test connection successful to:', wsUrl);
+      setWarning(`Test connection successful to ${wsUrl}`);
+      testSocket.close();
+    };
+    
+    testSocket.onerror = (error) => {
+      console.error('App: Test connection failed to:', wsUrl, error);
+      setError(`Test connection failed to ${wsUrl}. Check if the server is running.`);
+    };
+    
+    testSocket.onclose = () => {
+      console.log('App: Test connection closed');
+    };
+    
+    // Set a timeout to close the test connection if it doesn't connect quickly
+    setTimeout(() => {
+      if (testSocket.readyState === WebSocket.CONNECTING) {
+        testSocket.close();
+        setError(`Test connection timeout to ${wsUrl}. Server may be unreachable.`);
+      }
+    }, 5000);
+  };
+
+  // If we're showing the start screen, render it
   if (showStartScreen) {
-    console.log('App: Rendering StartScreen');
-    return <StartScreen onStart={handleStartApp} />;
+    console.log('App: Rendering start screen');
+    return (
+      <StartScreen onStart={handleStartApp} />
+    );
   }
 
-  // If we're loading the 3D scene, show the loading screen
+  // If the scene is loading, show the loading scene
   if (isSceneLoading) {
-    console.log('App: Rendering LoadingScene');
-    return <LoadingScene onComplete={handleLoadingComplete} />;
+    console.log('App: Rendering loading scene');
+    return (
+      <LoadingScene onComplete={handleLoadingComplete} />
+    );
   }
 
   console.log('App: Rendering main application');
@@ -326,6 +505,7 @@ function App() {
                     positionHistory={positionHistory}          // History of target positions
                     liveTelemetry={liveTelemetry}             // Real-time sensor data
                     status={status}                           // Current system status
+                    progress={progress}                       // NEW: Progress percentage for real-time display
                     predictedOrbitParams={predictedOrbitParams} // Predicted orbit to show in local view
                   />
                 )}
@@ -348,6 +528,7 @@ function App() {
           {/* These panels are positioned on the sides and don't move when users interact with the 3D scene */}
           <SystemHUD
             currentView={currentView}                    // Which view we're currently showing
+            appMode={appMode}                            // NEW: Current application mode
             status={status}                              // Current system status
             progress={progress}                          // Progress percentage
             warning={warning}                            // Warning messages
@@ -363,6 +544,8 @@ function App() {
             onStart={handleStart}                       // Function to call when Start is clicked
             onStop={handleStop}                         // Function to call when Stop is clicked
             onReset={handleReset}                       // Function to call when Reset is clicked
+            onModeChange={handleModeChange}            // Function to call when mode changes
+            onTestConnection={testWebSocketConnection}  // NEW: Function to test WebSocket connection
           />
         </div>
       </div>

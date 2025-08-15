@@ -26,25 +26,32 @@ SERVO_UPDATE_INTERVAL = 0.01
 STEPPER_SWEEP_DEGREES = 360
 STEPS_FOR_SWEEP = int((STEPPER_SWEEP_DEGREES / 360.0) * STEPS_PER_REVOLUTION)
 SERVO_SWEEP_START = 0
-SERVO_SWEEP_END = 60
+SERVO_SWEEP_END = 20
 
 # --- Calibration & Detection Settings ---
 CALIBRATION_SWEEPS = 2
 DETECTION_THRESHOLD_FACTOR = 0.8
 SENSOR_MAX = 1300
-# --- FIX: New constant to require multiple consecutive detections. ---
-# This prevents false positives from single noisy readings.
-DETECTION_CONFIDENCE_THRESHOLD = 5
 
-# --- Assurance Scan Settings ---
-ZIG_ZAG_STEP_SIZE = 2  # Degrees per step in zigzag pattern
-ZIG_ZAG_ELEVATION_INCREMENT = 1  # Degrees to increment elevation each sweep
-POINTS_NEEDED = 3  # Total number of points needed for trajectory
-MAX_POINTS_MEMORY = 100  # Maximum number of points to store for trajectory
+# # --- Assurance Scan Settings ---
+# ZIG_ZAG_STEP_SIZE = 2  # Degrees per step in zigzag pattern
+# ZIG_ZAG_ELEVATION_INCREMENT = 1  # Degrees to increment elevation each sweep
+# POINTS_NEEDED = 3  # Total number of points needed for trajectory
+# MAX_POINTS_MEMORY = 100  # Maximum number of points to store for trajectory
 
-# --- Trajectory Following Settings ---
-TRAJECTORY_UPDATE_THRESHOLD = 5.0  # cm - Minimum change needed to update trajectory
-NARROW_SCAN_WIDTH = 20  # Degrees - Width of scan when following trajectory
-TRACKING_SPEED_MULTIPLIER = 1.5  # Speed increase for tracking mode
+# # --- Trajectory Following Settings ---
+# TRAJECTORY_UPDATE_THRESHOLD = 5.0  # cm - Minimum change needed to update trajectory
+# NARROW_SCAN_WIDTH = 20  # Degrees - Width of scan when following trajectory
+# TRACKING_SPEED_MULTIPLIER = 1.5  # Speed increase for tracking mode
+
+# --- Initial Detection Settings
+DEFAULT_CALIBRATION_DISTANCE = 1200  # cm - adjust based on your environment
+ANOMALY_MAX_RADIUS = 10.0 # max degree range in which to average points
+SWEEP_RANGE = 3
+ANOMALY_FACTOR = 0.5
 
 
+# -----------------------
+satellite_name = "ISS (ZARYA)"
+line1 = "1 25544U 98067A   24225.51782528  .00016717  00000-0  30199-3 0  9992"
+line2 = "2 25544  51.6426  95.0936 0007310  00.0000  60.6990 15.50209251454141"
