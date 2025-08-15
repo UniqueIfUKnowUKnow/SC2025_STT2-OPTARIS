@@ -418,11 +418,11 @@ const Scene3D = ({
         
         {/* Measured path trail */}
         <MeasuredPath positions={measuredPositions} />
-        
-        {/* Manual points */}
+         
+        {/* Manual points
         {manualPointsScene?.map((p, idx) => (
           <HexagonMarker key={`manual-${idx}`} position={p} color="#ffd54f" size={0.08} />
-        ))}
+        ))} */}
         
         {/* Kalman predicted path (cyan) */}
         {kfPredictedPath && kfPredictedPath.length > 1 && (

@@ -1,4 +1,14 @@
+<<<<<<< HEAD
+/* Collapsible panel header arrow */
+.collapsible-header span:first-child {
+  font-size: 1.1em;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+/* SystemHUD.css - Styling for the Heads-Up Display interface */
+=======
 /* SystemHUD.css - Styles for the system heads-up display overlay */
+>>>>>>> 4f56bc0eaf5c8202c0eee27f341501512cfe7ee3
 
 .system-hud {
   position: fixed;

@@ -63,27 +63,26 @@ const SystemHUD = ({
 }) => {
   // Extract orbital elements from the predicted orbit parameters
   const elements = getOrbitalElements(predictedOrbitParams);
-  
+
   // Determine if the system is currently running based on the status
   // This is used to enable/disable the Stop button
   const isRunning = status === 'TRACKING_TARGET' || status?.includes('IN_PROGRESS') || status?.includes('SEARCHING');
-  
+
   // State for the current date and time - this updates every second
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   
   // NEW: State for mode selection
   const [selectedMode, setSelectedMode] = useState(appMode || 'simulation');
 
+  // Collapsible state for panels
+  const [showOrbit, setShowOrbit] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
+
   // Effect to update the date and time every second
-  // This creates a live clock that users can always see
   useEffect(() => {
-    // Create a timer that updates every 1000 milliseconds (1 second)
     const timer = setInterval(() => {
       setCurrentDateTime(new Date());
     }, 1000);
-
-    // Cleanup function - this runs when the component is removed from the screen
-    // It stops the timer so we don't waste computer resources
     return () => clearInterval(timer);
   }, []);
 
@@ -95,20 +94,20 @@ const SystemHUD = ({
   // Function to format the date in a readable way (e.g., "January 15, 2024")
   const formatDate = (date) => {
     return date.toLocaleDateString('en-US', {
-      weekday: 'long',      // Full day name (e.g., "Monday")
-      year: 'numeric',      // Full year (e.g., "2024")
-      month: 'long',        // Full month name (e.g., "January")
-      day: 'numeric'        // Day of the month (e.g., "15")
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
   };
 
   // Function to format the time in a readable way (e.g., "2:30:45 PM")
   const formatTime = (date) => {
     return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',      // Hour (e.g., "2")
-      minute: '2-digit',    // Minute with leading zero (e.g., "30")
-      second: '2-digit',    // Second with leading zero (e.g., "45")
-      hour12: true          // Use 12-hour format with AM/PM
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
     });
   };
 
@@ -442,9 +441,124 @@ const SystemHUD = ({
             <span className="data-label">Date:</span>
             <span className="data-value">{formatDate(currentDateTime)}</span>
           </div>
+<<<<<<< HEAD
+        </div>
+
+        {/* RIGHT SIDE PANELS - These are positioned on the right side of the screen */}
+        <div className="right-panels">
+          
+          {/* Orbital Parameters Panel - Collapsible */}
+          <div className="hud-panel hud-orbit">
+            <h3 className="collapsible-header" onClick={() => setShowOrbit((v) => !v)} style={{cursor:'pointer',userSelect:'none',display:'flex',alignItems:'center'}}>
+              <span style={{marginRight:8}}>{showOrbit ? '▼' : '►'}</span>Orbital Parameters
+            </h3>
+            {showOrbit && (
+              <>
+                {/* Semi-Major Axis - the "size" of the orbit */}
+                <div className="orbit-item">
+                  <span>Semi-Major Axis (a):</span>
+                  <span className="orbit-value">
+                    {formatValue(elements.semiMajorAxis, ' km')}
+                  </span>
+                </div>
+                {/* Eccentricity - how "oval" the orbit is (0 = perfect circle, 1 = very elongated) */}
+                <div className="orbit-item">
+                  <span>Eccentricity (e):</span>
+                  <span className="orbit-value">
+                    {formatValue(elements.eccentricity, '', 4)}
+                  </span>
+                </div>
+                {/* Inclination - how tilted the orbit is relative to Earth's equator */}
+                <div className="orbit-item">
+                  <span>Inclination (i):</span>
+                  <span className="orbit-value">
+                    {formatValue(elements.inclinationDeg, '°')}
+                  </span>
+                </div>
+                {/* RAAN (Right Ascension of Ascending Node) - where the orbit crosses the equator going up */}
+                <div className="orbit-item">
+                  <span>RAAN (Ω):</span>
+                  <span className="orbit-value">
+                    {formatValue(elements.raanDeg, '°')}
+                  </span>
+                </div>
+                {/* Argument of Periapsis - where the closest point to Earth is in the orbit */}
+                <div className="orbit-item">
+                  <span>Arg. of Periapsis (ω):</span>
+                  <span className="orbit-value">
+                    {formatValue(elements.argPeriapsisDeg, '°')}
+                  </span>
+                </div>
+                {/* True Anomaly - current position in the orbit */}
+                <div className="orbit-item">
+                  <span>True Anomaly (ν):</span>
+                  <span className="orbit-value">
+                    {formatValue(elements.trueAnomalyDeg, '°')}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Visual Legend Panel - Collapsible */}
+          <div className="hud-panel hud-legend">
+            <h3 className="collapsible-header" onClick={() => setShowLegend((v) => !v)} style={{cursor:'pointer',userSelect:'none',display:'flex',alignItems:'center'}}>
+              <span style={{marginRight:8}}>{showLegend ? '▼' : '►'}</span>Visual Legend
+            </h3>
+            {showLegend && (
+              <>
+                {/* Legend for Global View (Earth and satellites) */}
+                {currentView === 'global' ? (
+                  <>
+                    <div className="legend-item">
+                      <span style={{ color: '#ff4444' }}>■</span> Sofia Tech Park (Ground Station)
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: '#ff6b35' }}>■</span> Optaris Satellite
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: '#00ff88' }}>■</span> ISS Satellite
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: '#4e9cff' }}>●</span> Measured Position (LiDAR)
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: '#ff6b35' }}>─</span> Predicted Orbit (Optaris)
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: '#00ff88' }}>─</span> ISS Orbit Path
+                    </div>
+                  </>
+                ) : (
+                  // Legend for Local View (LiDAR tracker)
+                  <>
+                    <div className="legend-item">
+                      <span style={{ color: 'red' }}>■</span> LiDAR Sensor
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: 'lime' }}>●</span> Target Position
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: 'white' }}>●</span> History (fades)
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: 'cyan' }}>─</span> Scanner Beam
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: 'red' }}>─</span> Tracking Beam
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ color: 'cyan' }}>○</span> 12m Range Sphere
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+=======
           <div className="data-item">
             <span className="data-label">Time:</span>
             <span className="data-value">{formatTime(currentDateTime)}</span>
+>>>>>>> 4f56bc0eaf5c8202c0eee27f341501512cfe7ee3
           </div>
         </div>
       </div>
