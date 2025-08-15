@@ -85,7 +85,8 @@ def main():
                     # Step the motor first
                     stepper_step()
                     stepper_steps += 1
-                    
+                    time.sleep(0.0005)
+
                     # Calculate current azimuth position (incremental update)
                     current_azimuth = (stepper_steps / STEPS_PER_REVOLUTION) * 360
                     
@@ -131,7 +132,7 @@ def main():
                     # Step the motor first
                     stepper_step()
                     stepper_steps -= 1
-                    
+                    time.sleep(0.0005)
                     # Calculate current azimuth position
                     current_azimuth = (stepper_steps / STEPS_PER_REVOLUTION) * 360
                     

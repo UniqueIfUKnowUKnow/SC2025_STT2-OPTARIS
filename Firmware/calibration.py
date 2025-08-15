@@ -66,7 +66,6 @@ def calibrate_environment(pi, lidar_data_queue):
             # reset_stepper_pos(stepper_steps_taken)
             target_steps = STEPS_FOR_SWEEP
             GPIO.output(DIR_PIN, GPIO.HIGH)
-            stepper_steps_taken = 0
             
             while stepper_steps_taken < target_steps:
                 stepper_steps_taken += 1
@@ -90,6 +89,7 @@ def calibrate_environment(pi, lidar_data_queue):
                             azimuth_readings[nearest_azimuth].append(distance)
                 except queue.Empty:
                     pass
+            stepper_steps_taken = 0
                     
         else:
             
@@ -97,7 +97,7 @@ def calibrate_environment(pi, lidar_data_queue):
             # reset_stepper_pos(stepper_steps_taken)
             target_steps = STEPS_FOR_SWEEP
             GPIO.output(DIR_PIN, GPIO.LOW)
-            stepper_steps_taken = 0
+            
             
             while stepper_steps_taken < target_steps:
                 stepper_steps_taken += 1
@@ -121,6 +121,7 @@ def calibrate_environment(pi, lidar_data_queue):
                             azimuth_readings[nearest_azimuth].append(distance)
                 except queue.Empty:
                     pass
+            stepper_steps_taken = 0
         
         # Process collected readings for this elevation
         for azimuth in azimuth_increments:
@@ -151,6 +152,7 @@ def calibrate_environment(pi, lidar_data_queue):
     set_servo_angle(pi, 0)
     
     # Return stepper to 0 degrees
+    print(stepper_steps_taken)
     reset_stepper_pos(stepper_steps_taken)
     
     print(f"Calibration complete! Collected {len(calibration_data)} averaged measurements.")
