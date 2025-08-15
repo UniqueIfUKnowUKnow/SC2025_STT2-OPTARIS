@@ -99,19 +99,109 @@ def h_spherical(x):
 class LidarReader(threading.Thread):
     def __init__(self, port, baudrate, data_queue):
         super().__init__(daemon=True)
-        self.port, self.baudrate, self.data_queue = port, baudrate, data_queue
-        self.ser = serial.Serial(self.port, self.baudrate, timeout=0.1)
-        self.ser.flushInput()
+        self.port = port
+        self.baudrate = baudrate
+        self.data_queue = data_queue
+        self.ser = None
+        self.running = True
         self.frame_header = 0x59
-        print("LiDAR Reader thread initialized.")
+        self.connect()
+
+    def connect(self):
+        try:
+            if self.ser is not None:
+                self.ser.close()
+                time.sleep(0.2)  # Wait for port to fully close
+                
+            # Configure serial port with explicit settings
+            self.ser = serial.Serial(
+                port=self.port,
+                baudrate=self.baudrate,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=None,    # Changed to blocking mode
+                xonxoff=False,   # Disable software flow control
+                rtscts=False,    # Disable hardware flow control
+                dsrdtr=False     # Disable hardware flow control
+            )
+            
+            # Toggle DTR to reset TFmini
+            self.ser.dtr = True
+            time.sleep(0.1)
+            self.ser.dtr = False
+            time.sleep(0.5)     # Wait for device to stabilize
+            
+            # Clear any leftover data
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
+            
+            print("LiDAR Reader connected successfully.")
+            return True
+        except serial.SerialException as e:
+            print(f"Failed to connect to LiDAR: {e}")
+            time.sleep(0.5)     # Wait before retry
+            return False
 
     def run(self):
-        while True:
-            if self.ser.read(1) == b'\x59' and self.ser.read(1) == b'\x59':
+        reconnect_delay = 1  # seconds
+        while self.running:
+            try:
+                if self.ser is None or not self.ser.is_open:
+                    if not self.connect():
+                        time.sleep(reconnect_delay)
+                        continue
+
+                # Look for frame header
+                while self.running:
+                    # Read all available bytes
+                    if self.ser.in_waiting < 2:
+                        time.sleep(0.001)  # Short delay if not enough data
+                        continue
+                        
+                    # Try to find frame start
+                    byte = self.ser.read(1)
+                    if byte != b'\x59':
+                        continue
+                        
+                    byte = self.ser.read(1)
+                    if byte == b'\x59':
+                        break  # Found frame start
+                    
+                # Wait for complete frame
+                while self.ser.in_waiting < 7:
+                    time.sleep(0.001)
+                    
+                # Read frame data
                 frame = b'\x59\x59' + self.ser.read(7)
-                if len(frame) == 9 and sum(frame[:-1]) & 0xFF == frame[8]:
-                    distance_cm = frame[2] + (frame[3] << 8)
-                    if distance_cm > 0: self.data_queue.put(distance_cm)
+                
+                # Validate frame
+                if len(frame) != 9:
+                    continue
+                    
+                # Verify checksum
+                checksum = frame[8]
+                calc_checksum = sum(frame[:-1]) & 0xFF
+                if checksum != calc_checksum:
+                    continue
+                    
+                # Extract and validate distance
+                distance_cm = frame[2] + (frame[3] << 8)
+                if 0 < distance_cm < 12000:  # TFmini valid range check
+                    self.data_queue.put(distance_cm)
+
+            except serial.SerialException as e:
+                print(f"Serial error: {e}")
+                self.ser = None
+                time.sleep(reconnect_delay)
+            except Exception as e:
+                print(f"Unexpected error in LiDAR reader: {e}")
+                time.sleep(0.1)
+
+    def stop(self):
+        self.running = False
+        if self.ser:
+            self.ser.close()
 
 # --- Setup and Control Functions (Unchanged) ---
 def setup_stepper_gpio():
@@ -255,6 +345,8 @@ def main():
         print("\nProgram stopped by user.")
     finally:
         print("Cleaning up...")
+        lidar_thread.stop()  # Stop the LiDAR thread gracefully
+        time.sleep(0.5)     # Give the thread time to clean up
         pi.set_servo_pulsewidth(SERVO_PIN, 0)
         pi.stop()
         GPIO.cleanup()
