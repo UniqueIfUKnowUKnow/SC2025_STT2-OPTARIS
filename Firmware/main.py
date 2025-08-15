@@ -80,7 +80,7 @@ def main():
                     except queue.Empty:
                         break
                 # Forward sweep
-                time.sleep(0.1)
+                
                 for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
                     # Step the motor first
                     stepper_step()
@@ -113,47 +113,48 @@ def main():
                     except queue.Empty:
                         continue
 
-                if anomaly_count >= 3:
-                    current_state = states[2]     
+                    if anomaly_count >= 3:
+                        current_state = states[2]     
 
-                    # Reverse sweep
-                    GPIO.output(DIR_PIN, GPIO.LOW)
-                    print("Reverse sweep...")
+                # Reverse sweep
+                GPIO.output(DIR_PIN, GPIO.LOW)
+                print("Reverse sweep...")
+                
+                for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
+                    # Step the motor first
+                    stepper_step()
+                    stepper_steps -= 1
                     
-                    for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
-                        # Step the motor first
-                        stepper_step()
-                        stepper_steps -= 1
+                    # Calculate current azimuth position
+                    current_azimuth = (stepper_steps / STEPS_PER_REVOLUTION) * 360
+                    
+                    # Get LiDAR reading
+                    try:
+                        distance = lidar_data_queue.get_nowait()
                         
-                        # Calculate current azimuth position
-                        current_azimuth = (stepper_steps / STEPS_PER_REVOLUTION) * 360
+                        # Get reference distance for this position
+                        reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
                         
-                        # Get LiDAR reading
-                        try:
-                            distance = lidar_data_queue.get_nowait()
+                        # Check for anomaly
+                        if distance < reference * ANOMALY_FACTOR:
+                            # Store as [distance, azimuth, elevation] triplet
+                            anomaly_locations.append([distance, current_azimuth, current_elevation])
+                            print(f"Anomaly detected: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), "
+                                f"expected: {reference:.1f}cm, difference: {distance - (reference * ANOMALY_FACTOR):.1f}cm")
                             
-                            # Get reference distance for this position
-                            reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
+                        # Check if we have enough anomalies to declare detection
+                        if len(anomaly_locations) >= 3:
+                            anomaly_averaged_coords.append([tuple(round(sum(col) / len(col), 2) for col in zip(*anomaly_locations))])
+                            anomaly_locations = []
+                            current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10+SWEEP_RANGE, current_elevation , stepper_steps)
+                            anomaly_count += 1
                             
-                            # Check for anomaly
-                            if distance < reference * ANOMALY_FACTOR:
-                                # Store as [distance, azimuth, elevation] triplet
-                                anomaly_locations.append([distance, current_azimuth, current_elevation])
-                                print(f"Anomaly detected: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), "
-                                    f"expected: {reference:.1f}cm, difference: {distance - (reference * ANOMALY_FACTOR):.1f}cm")
-                                
-                            # Check if we have enough anomalies to declare detection
-                            if len(anomaly_locations) >= 3:
-                                anomaly_averaged_coords.append([tuple(round(sum(col) / len(col), 2) for col in zip(*anomaly_locations))])
-                                anomaly_locations = []
-                                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10+SWEEP_RANGE, current_elevation , stepper_steps)
-                                anomaly_count += 1
-                                
-                        except queue.Empty:
-                            continue
+                    except queue.Empty:
+                        continue
 
 
                 if anomaly_count >= 3:
+                    print(anomaly_averaged_coords)
                     current_state = states[2]
 
             elif current_state == "DETECTED":

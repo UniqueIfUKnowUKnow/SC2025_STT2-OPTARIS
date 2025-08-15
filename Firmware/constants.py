@@ -33,22 +33,11 @@ CALIBRATION_SWEEPS = 2
 DETECTION_THRESHOLD_FACTOR = 0.8
 SENSOR_MAX = 1300
 
-# # --- Assurance Scan Settings ---
-# ZIG_ZAG_STEP_SIZE = 2  # Degrees per step in zigzag pattern
-# ZIG_ZAG_ELEVATION_INCREMENT = 1  # Degrees to increment elevation each sweep
-# POINTS_NEEDED = 3  # Total number of points needed for trajectory
-# MAX_POINTS_MEMORY = 100  # Maximum number of points to store for trajectory
 
-# # --- Trajectory Following Settings ---
-# TRAJECTORY_UPDATE_THRESHOLD = 5.0  # cm - Minimum change needed to update trajectory
-# NARROW_SCAN_WIDTH = 20  # Degrees - Width of scan when following trajectory
-# TRACKING_SPEED_MULTIPLIER = 1.5  # Speed increase for tracking mode
-
-# --- Initial Detection Settings
 DEFAULT_CALIBRATION_DISTANCE = 1200  # cm - adjust based on your environment
 ANOMALY_MAX_RADIUS = 10.0 # max degree range in which to average points
-SWEEP_RANGE = 5
-ANOMALY_FACTOR = 0.5
+SWEEP_RANGE = 10
+ANOMALY_FACTOR = 0.7
 
 
 # -----------------------
