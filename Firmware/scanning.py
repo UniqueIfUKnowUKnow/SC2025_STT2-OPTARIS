@@ -6,7 +6,6 @@ from constants import *
 from move_motors import stepper_step, move_to_polar_position
 from anomaly_check import get_interpolated_reference_distance
 
-
 def perform_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
                  stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 
                  direction="forward"):
@@ -67,7 +66,8 @@ def perform_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, curre
             # Check for anomaly
             if distance < reference * ANOMALY_FACTOR:
                 # Store as [distance, azimuth, elevation] triplet
-                anomaly_locations.append([distance, current_azimuth, current_elevation])
+                
+                anomaly_locations.append([distance, current_azimuth, current_elevation, time.time()])
                 print(f"Anomaly detected: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), "
                       f"expected: {reference:.1f}cm, difference: {distance - (reference * ANOMALY_FACTOR):.1f}cm")
                 

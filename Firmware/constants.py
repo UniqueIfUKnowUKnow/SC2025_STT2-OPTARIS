@@ -20,13 +20,13 @@ STEPS_PER_REVOLUTION = 6400
 STEPPER_PULSE_DELAY = 0.0001
 MIN_PULSE_WIDTH = 500
 MAX_PULSE_WIDTH = 2500
-SERVO_UPDATE_INTERVAL = 0.015
+SERVO_UPDATE_INTERVAL = 0.01
 
 # Stepper and Servo Sweep Settings
 STEPPER_SWEEP_DEGREES = 360
 STEPS_FOR_SWEEP = int((STEPPER_SWEEP_DEGREES / 360.0) * STEPS_PER_REVOLUTION)
 SERVO_SWEEP_START = 0
-SERVO_SWEEP_END = 20
+SERVO_SWEEP_END = 60
 
 # --- Calibration & Detection Settings ---
 CALIBRATION_SWEEPS = 2
@@ -35,10 +35,11 @@ SENSOR_MAX = 1300
 
 
 DEFAULT_CALIBRATION_DISTANCE = 1200  # cm - adjust based on your environment
-ANOMALY_MAX_RADIUS = 10.0 # max degree range in which to average points
+ANOMALY_MAX_RADIUS = 5.0 # max degree range in which to average points
 SWEEP_RANGE = 10
 ANOMALY_FACTOR = 0.7
 
+START_TIME = 0
 
 # -----------------------
 satellite_name = "ISS (ZARYA)"

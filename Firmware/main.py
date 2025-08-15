@@ -14,6 +14,7 @@ from tle_processing import parse_tle
 from anomaly_check import get_interpolated_reference_distance
 from scanning import perform_scanning_sequence
 
+
 # --- Main Application ---
 def main():
     """
@@ -61,7 +62,7 @@ def main():
                 save_calibration_data(calibration_data)
 
                 # Moving to right of ascending node
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 30 , stepper_steps)
 
                 calibration_done = True
                 if calibration_done:
