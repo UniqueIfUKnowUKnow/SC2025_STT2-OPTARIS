@@ -97,7 +97,7 @@ def get_interpolated_reference_distance(current_azimuth, current_elevation, cali
     
     # Get the 4 nearest points
     nearest_points = find_nearest_calibration_points(current_azimuth, current_elevation, 
-                                                   calibration_data, ANOMALY_MAX_RADIUS)
+                                                   calibration_data)
     
     # Simple average of the 4 quadrant distances
     distances = list(nearest_points.values())

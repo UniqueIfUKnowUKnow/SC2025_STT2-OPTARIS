@@ -11,7 +11,7 @@ from stepper_setup import setup_stepper_gpio
 from move_motors import *
 from calibration import *
 from tle_processing import parse_tle
-from anomaly_check import find_nearest_calibration_points
+from anomaly_check import get_interpolated_reference_distance
 
 # --- Main Application ---
 def main():
@@ -46,6 +46,7 @@ def main():
     current_elevation = 0
     anomaly_detected = False
     anomaly_locations = []
+
     try:
         while True:
             if current_state == "CALIBRATING":
@@ -57,7 +58,7 @@ def main():
                 save_calibration_data(calibration_data)
 
                 # Moving to right of ascending node
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 0, stepper_steps)
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
 
                 calibration_done = True
                 if calibration_done:
@@ -68,34 +69,46 @@ def main():
                 print("Scanning area...")
                 GPIO.output(DIR_PIN, GPIO.HIGH)
 
-                for i in range ( STEPS_PER_REVOLUTION * SWEEP_RANGE / 360 ):
+                for i in range ( round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360) ):
                     # scanning code here
                     stepper_step()
                     stepper_steps += 1
                     current_azimuth += (stepper_steps/STEPS_PER_REVOLUTION)*360
-                    reference = find_nearest_calibration_points(current_azimuth, current_elevation, calibration_data)
-                    distance = lidar_data_queue.get_nowait()
-                    if distance < reference * ANOMALY_FACTOR:
-                        anomaly_locations.append(distance, current_azimuth, current_elevation)
-                    if len(anomaly_locations) > 3:
-                        anomaly_detected = True
+                    try:
+                        distance = lidar_data_queue.get_nowait()  # or get(block=False)
+                        reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
+                        distance = lidar_data_queue.get_nowait()
+                        if distance < reference * ANOMALY_FACTOR:
+                            anomaly_locations.extend([distance, current_azimuth, current_elevation])
+                            print((distance-(reference*ANOMALY_FACTOR)))
+                        if len(anomaly_locations) > 3:
+                            anomaly_detected = True
+                    except queue.Empty:
+                        continue
                         
                 if anomaly_detected:
                     current_state = states[2]
                 
                 GPIO.output(DIR_PIN, GPIO.LOW)
-                for i in range ( STEPS_PER_REVOLUTION * SWEEP_RANGE / 360 ):
+                for i in range ( round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)     ):
 
                     # scanning code here
                     stepper_step()
                     stepper_steps -= 1
                     current_azimuth += (stepper_steps/STEPS_PER_REVOLUTION)*360
-                    reference = find_nearest_calibration_points(current_azimuth, current_elevation, calibration_data)
-                    distance = lidar_data_queue.get_nowait()
-                    if distance < reference * ANOMALY_FACTOR:
-                        anomaly_locations.append(distance, current_azimuth, current_elevation)
-                    if len(anomaly_locations) > 3:
-                        anomaly_detected = True
+                    reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
+                    
+                    try:
+                        distance = lidar_data_queue.get_nowait()  # or get(block=False)
+                        reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
+                        distance = lidar_data_queue.get_nowait()
+                        if distance < reference * ANOMALY_FACTOR:
+                            anomaly_locations.extend([distance, current_azimuth, current_elevation])
+                            print((distance-(reference*ANOMALY_FACTOR)))
+                        if len(anomaly_locations) > 3:
+                            anomaly_detected = True
+                    except queue.Empty:
+                        continue
                         
                 if anomaly_detected:
                     current_state = states[2]
@@ -103,7 +116,7 @@ def main():
             elif current_state == "DETECTED":
                 print("Target detected!")
                 # detection handling code here
-
+                
                 break
         
     except KeyboardInterrupt:
@@ -118,4 +131,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
