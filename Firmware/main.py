@@ -16,6 +16,7 @@ from scanning import perform_scanning_sequence
 from ekf_tracker import create_drone_tracker, update_tracker_with_anomaly_data
 from datetime import datetime
 import math
+from ekf_tracker import DroneEK
 
 
 def enhanced_detected_state(pi, lidar_data_queue, calibration_data, anomaly_averaged_coords, stepper_steps):
@@ -268,26 +269,204 @@ def main():
                     current_state = states[2]
 
             elif current_state == "DETECTED":
-                print("Target detected! Starting EKF tracking...")
+                print("=== TARGET DETECTED - INITIALIZING EKF TRACKING ===")
                 
-
-                tracker = create_drone_tracker()
-                tracker = update_tracker_with_anomaly_data(tracker, anomaly_averaged_coords)
-                # Predict future position and move motors
-                future_distance, future_azimuth, future_elevation = tracker.predict_future_spherical(2.0)
+                # Initialize EKF tracker with first detection as starting point
+                if len(anomaly_averaged_coords) > 0:
+                    first_detection = anomaly_averaged_coords[0]
+                    if len(first_detection) >= 4:  # [distance, azimuth, elevation, timestamp]
+                        initial_measurement = first_detection[:3]
+                        tracker = create_drone_tracker(initial_detection=initial_measurement)
+                        print(f"EKF initialized with first detection: {initial_measurement}")
+                    else:
+                        tracker = create_drone_tracker()
+                        print("EKF initialized without specific initial detection")
+                else:
+                    tracker = create_drone_tracker()
+                    print("EKF initialized - no prior detections available")
                 
-                # Move to predicted position
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(
-                    pi, future_azimuth, future_elevation, stepper_steps)
-                # Use the enhanced detection state with EKF tracking
-                continue_tracking = enhanced_detected_state(
-                    pi, lidar_data_queue, calibration_data, anomaly_averaged_coords, stepper_steps
-                )
+                # Update tracker with all existing anomaly detections
+                if len(anomaly_averaged_coords) > 0:
+                    print(f"Updating EKF with {len(anomaly_averaged_coords)} existing detections...")
+                    for i, coords_group in enumerate(anomaly_averaged_coords):
+                        if len(coords_group) >= 4:
+                            distance, azimuth, elevation, timestamp = coords_group[:4]
+                            
+                            # Convert timestamp to datetime if needed
+                            if isinstance(timestamp, (int, float)):
+                                dt_timestamp = datetime.fromtimestamp(timestamp)
+                            else:
+                                dt_timestamp = timestamp
+                            
+                            measurement = [distance, azimuth, elevation]
+                            tracker.update(measurement, dt_timestamp)
+                            print(f"  Detection {i+1}: {distance:.1f}cm at ({azimuth:.1f}°, {elevation:.1f}°)")
                 
-                if not continue_tracking:
-                    print("Tracking completed.")
-                    break
-
+                print(f"EKF updated with {tracker.get_measurement_count()} total measurements")
+                print(f"Initial tracking confidence: {tracker.get_tracking_confidence():.2f}")
+                
+                # Only proceed with predictive tracking if we have enough data
+                if tracker.get_measurement_count() < 3:
+                    print("Insufficient measurements for reliable prediction - collecting more data...")
+                    
+                    # Continue scanning to get more measurements
+                    current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, should_continue = perform_scanning_sequence(
+                        pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                        stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count
+                    )
+                    
+                    # Update tracker with any new detections
+                    if len(anomaly_averaged_coords) > tracker.get_measurement_count():
+                        new_detections = anomaly_averaged_coords[tracker.get_measurement_count():]
+                        for coords_group in new_detections:
+                            if len(coords_group) >= 4:
+                                distance, azimuth, elevation, timestamp = coords_group[:4]
+                                if isinstance(timestamp, (int, float)):
+                                    dt_timestamp = datetime.fromtimestamp(timestamp)
+                                else:
+                                    dt_timestamp = timestamp
+                                
+                                measurement = [distance, azimuth, elevation]
+                                tracker.update(measurement, dt_timestamp)
+                    
+                    print(f"Updated tracking confidence: {tracker.get_tracking_confidence():.2f}")
+                
+                # Main predictive tracking loop
+                if tracker.get_measurement_count() >= 3:
+                    print("=== STARTING PREDICTIVE TRACKING ===")
+                    
+                    tracking_duration = 30.0  # Track for 30 seconds
+                    prediction_time = 1.5     # Predict 1.5 seconds ahead
+                    update_interval = 0.3     # Update motors every 0.3 seconds
+                    
+                    start_time = datetime.now()
+                    last_move_time = datetime.now()
+                    consecutive_no_detection = 0
+                    max_no_detection = 10  # Stop tracking if no detection for this many cycles
+                    
+                    print(f"Tracking parameters: Duration={tracking_duration}s, Prediction={prediction_time}s, Update={update_interval}s")
+                    
+                    while (datetime.now() - start_time).total_seconds() < tracking_duration:
+                        current_time = datetime.now()
+                        
+                        # Check for new LiDAR measurements
+                        new_detection = False
+                        try:
+                            distance = lidar_data_queue.get_nowait()
+                            
+                            # Get current motor positions for anomaly checking
+                            current_azimuth_est = (stepper_steps / STEPS_PER_REVOLUTION) * 360
+                            
+                            # Get reference distance for anomaly detection
+                            reference = get_interpolated_reference_distance(
+                                current_azimuth_est, current_elevation, calibration_data
+                            )
+                            
+                            # Check if this is an anomaly (potential drone detection)
+                            if distance < reference * ANOMALY_FACTOR:
+                                # New detection - update EKF
+                                measurement = [distance, current_azimuth_est, current_elevation]
+                                tracker.update(measurement, current_time)
+                                
+                                print(f"New detection: {distance:.1f}cm at ({current_azimuth_est:.1f}°, {current_elevation:.1f}°)")
+                                print(f"Tracking confidence: {tracker.get_tracking_confidence():.2f}")
+                                
+                                new_detection = True
+                                consecutive_no_detection = 0
+                                
+                                # Validate tracking quality
+                                if not tracker.validate_velocity_direction():
+                                    print("Velocity direction validation failed - recalibrating...")
+                                    tracker.recalibrate_velocity()
+                            
+                        except queue.Empty:
+                            pass
+                        
+                        # Count consecutive cycles without detection
+                        if not new_detection:
+                            consecutive_no_detection += 1
+                            if consecutive_no_detection >= max_no_detection:
+                                print(f"No detections for {consecutive_no_detection} cycles - target likely lost")
+                                break
+                        
+                        # Move motors to predicted position periodically
+                        if (current_time - last_move_time).total_seconds() >= update_interval:
+                            try:
+                                # Predict future position
+                                future_distance, future_azimuth, future_elevation = tracker.predict_future_spherical(prediction_time)
+                                
+                                # Validate prediction reasonableness
+                                current_pos = tracker.x[:3]
+                                current_distance = math.sqrt(current_pos[0]**2 + current_pos[1]**2 + current_pos[2]**2) * 100
+                                distance_change = abs(future_distance - current_distance)
+                                max_reasonable_change = tracker.get_current_velocity_magnitude() * prediction_time * 100 * 2.0
+                                
+                                if distance_change > max_reasonable_change and max_reasonable_change > 0:
+                                    print(f"Warning: Predicted distance change ({distance_change:.0f}cm) exceeds reasonable limit ({max_reasonable_change:.0f}cm)")
+                                    print("Using shorter prediction time...")
+                                    future_distance, future_azimuth, future_elevation = tracker.predict_future_spherical(prediction_time * 0.5)
+                                
+                                print(f"Predicting target at t+{prediction_time:.1f}s: {future_distance:.0f}cm, {future_azimuth:.1f}°, {future_elevation:.1f}°")
+                                
+                                # Move motors to predicted position
+                                actual_azimuth, actual_elevation, stepper_steps = move_to_polar_position(
+                                    pi, future_azimuth, future_elevation, stepper_steps
+                                )
+                                
+                                current_azimuth = actual_azimuth
+                                current_elevation = actual_elevation
+                                
+                                print(f"Motors positioned at: {actual_azimuth:.1f}°, {actual_elevation:.1f}°")
+                                
+                                # Check for intercept opportunity
+                                intercept_time = tracker.estimate_intercept_time()
+                                if 0 < intercept_time < 5.0:  # Intercept within 5 seconds
+                                    print(f"*** INTERCEPT OPPORTUNITY in {intercept_time:.1f} seconds! ***")
+                                    
+                                    # Calculate intercept position
+                                    intercept_pos = tracker.predict_future_position(intercept_time)
+                                    intercept_azimuth, intercept_elevation, intercept_distance = xyz_to_polar(
+                                        intercept_pos[0], intercept_pos[1], intercept_pos[2]
+                                    )
+                                    
+                                    print(f"Moving to intercept position: {intercept_azimuth:.1f}°, {intercept_elevation:.1f}°")
+                                    
+                                    # Move to intercept position
+                                    actual_azimuth, actual_elevation, stepper_steps = move_to_polar_position(
+                                        pi, intercept_azimuth, intercept_elevation, stepper_steps
+                                    )
+                                    
+                                    print("*** INTERCEPT POSITION REACHED ***")
+                                    
+                                    # Wait for intercept
+                                    time.sleep(max(0, intercept_time - 0.1))  # Account for movement time
+                                    print("*** INTERCEPT TIME! ***")
+                                    
+                                    # Show final trajectory analysis
+                                    display_trajectory_analysis(tracker)
+                                    
+                                    # End tracking after intercept
+                                    break
+                                    
+                            except Exception as e:
+                                print(f"Error in prediction/movement: {e}")
+                                print("Continuing with current position...")
+                            
+                            last_move_time = current_time
+                        
+                        # Brief pause to prevent system overload
+                        time.sleep(0.01)
+                    
+                    # Display final tracking results
+                    print("\n=== TRACKING COMPLETED ===")
+                    display_trajectory_analysis(tracker)
+                    
+                else:
+                    print("Insufficient measurements for reliable tracking")
+                
+                # Return to scanning state to look for new targets
+                print("Returning to scanning mode...")
+                current_state = states[1]
     except KeyboardInterrupt:
         print("\nProgram stopped by user.")
     finally:

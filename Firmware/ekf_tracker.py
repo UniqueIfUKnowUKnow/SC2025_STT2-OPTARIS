@@ -433,43 +433,14 @@ def update_tracker_with_anomaly_data(tracker, anomaly_averaged_coords):
     
     return tracker
 
-# Example usage and testing
-if __name__ == "__main__":
-    # Create tracker
-    tracker = create_drone_tracker()
-    
-    # Simulate some measurements
-    import time
-    base_time = datetime.now()
-    
-    # Simulate a drone moving in a straight line
-    test_measurements = [
-        [500, 45, 30, base_time],
-        [480, 47, 32, base_time.replace(second=base_time.second + 1)],
-        [460, 49, 34, base_time.replace(second=base_time.second + 2)],
-        [440, 51, 36, base_time.replace(second=base_time.second + 3)],
-    ]
-    
-    print("Testing EKF with simulated measurements:")
-    print("=" * 50)
-    
-    for measurement in test_measurements:
-        distance, azimuth, elevation, timestamp = measurement
-        tracker.update([distance, azimuth, elevation], timestamp)
-        
-        print(f"Confidence: {tracker.get_tracking_confidence():.2f}")
-        print(f"Speed: {tracker.get_current_velocity_magnitude():.2f} m/s")
-        print()
-    
-    # Predict future positions
-    print("Future trajectory predictions:")
-    print("=" * 30)
-    
-    trajectory = tracker.get_trajectory_points(10, 1.0)
-    for time_point, x, y, z, dist_cm, az_deg, el_deg in trajectory[:5]:
-        print(f"t+{time_point:.1f}s: ({x:.2f}, {y:.2f}, {z:.2f})m -> "
-              f"({dist_cm:.0f}cm, {az_deg:.1f}°, {el_deg:.1f}°)")
-    
-    # Estimate intercept time
-    intercept_time = tracker.estimate_intercept_time()
-    print(f"\nClosest approach in {intercept_time:.1f} seconds")
+def get_current_velocity_magnitude(self):
+    """Get the magnitude of current velocity vector."""
+    return np.linalg.norm(self.x[3:6])
+
+def predict_with_validation(self, seconds_ahead):
+    """Predict future position with validation checks."""
+    if self.validate_velocity_direction():
+        return self.predict_future_position(seconds_ahead)
+    else:
+        self.recalibrate_velocity()
+        return self.predict_future_position(seconds_ahead)
