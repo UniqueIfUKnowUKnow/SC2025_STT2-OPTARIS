@@ -47,6 +47,7 @@ def main():
     anomaly_detected = False
     anomaly_locations = []
     anomaly_count = 0
+    anomaly_averaged_coords = []
 
     try:
         while True:
@@ -70,7 +71,7 @@ def main():
             elif current_state == "SCANNING":
                 print("Scanning area...")
                 
-                # Forward sweep
+                # Lidar queue and data reset
                 GPIO.output(DIR_PIN, GPIO.HIGH)
                 print("Forward sweep...")
                 while not lidar_data_queue.empty():
@@ -78,6 +79,7 @@ def main():
                         lidar_data_queue.get_nowait()
                     except queue.Empty:
                         break
+                # Forward sweep
                 time.sleep(0.1)
                 for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
                     # Step the motor first
@@ -102,19 +104,18 @@ def main():
                                 f"expected: {reference:.1f}cm, difference: {distance - (reference * ANOMALY_FACTOR):.1f}cm")
                             
                         # Check if we have enough anomalies to declare detection
-                        if len(anomaly_locations) >= 3:  # Note: checking length, not > 3
-                            anomaly_detected = True
-                            
+                        if len(anomaly_locations) >= 3:
+                                anomaly_averaged_coords.append([tuple(round(sum(col) / len(col), 2) for col in zip(*anomaly_locations))])
+                                anomaly_locations = []
+                                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10+SWEEP_RANGE, current_elevation , stepper_steps)
+                                anomaly_count += 1
+   
                     except queue.Empty:
                         continue
-                
-                # Check for detection before reverse sweep
-                if anomaly_detected:
-                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10, current_elevation , stepper_steps)
-                    anomaly_count += 1
-                    anomaly_detected = False
 
-                else:
+                if anomaly_count >= 3:
+                    current_state = states[2]     
+
                     # Reverse sweep
                     GPIO.output(DIR_PIN, GPIO.LOW)
                     print("Reverse sweep...")
@@ -143,17 +144,15 @@ def main():
                                 
                             # Check if we have enough anomalies to declare detection
                             if len(anomaly_locations) >= 3:
-                                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10, current_elevation , stepper_steps)
+                                anomaly_averaged_coords.append([tuple(round(sum(col) / len(col), 2) for col in zip(*anomaly_locations))])
+                                anomaly_locations = []
+                                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10+SWEEP_RANGE, current_elevation , stepper_steps)
                                 anomaly_count += 1
                                 
                         except queue.Empty:
                             continue
-                    
-                # Check for detection after reverse sweep
-                if anomaly_detected:
-                    
-                    anomaly_detected = False
-                
+
+
                 if anomaly_count >= 3:
                     current_state = states[2]
 
