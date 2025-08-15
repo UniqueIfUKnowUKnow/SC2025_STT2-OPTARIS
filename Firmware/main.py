@@ -46,6 +46,7 @@ def main():
     current_elevation = 0
     anomaly_detected = False
     anomaly_locations = []
+    anomaly_count = 0
 
     try:
         while True:
@@ -72,7 +73,12 @@ def main():
                 # Forward sweep
                 GPIO.output(DIR_PIN, GPIO.HIGH)
                 print("Forward sweep...")
-                
+                while not lidar_data_queue.empty():
+                    try:
+                        lidar_data_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                time.sleep(0.1)
                 for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
                     # Step the motor first
                     stepper_step()
@@ -104,7 +110,10 @@ def main():
                 
                 # Check for detection before reverse sweep
                 if anomaly_detected:
-                    current_state = states[2]
+                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10, current_elevation , stepper_steps)
+                    anomaly_count += 1
+                    anomaly_detected = False
+
                 else:
                     # Reverse sweep
                     GPIO.output(DIR_PIN, GPIO.LOW)
@@ -134,14 +143,19 @@ def main():
                                 
                             # Check if we have enough anomalies to declare detection
                             if len(anomaly_locations) >= 3:
-                                anomaly_detected = True
+                                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10, current_elevation , stepper_steps)
+                                anomaly_count += 1
                                 
                         except queue.Empty:
                             continue
                     
-                    # Check for detection after reverse sweep
-                    if anomaly_detected:
-                        current_state = states[2]
+                # Check for detection after reverse sweep
+                if anomaly_detected:
+                    
+                    anomaly_detected = False
+                
+                if anomaly_count >= 3:
+                    current_state = states[2]
 
             elif current_state == "DETECTED":
                 print("Target detected!")
