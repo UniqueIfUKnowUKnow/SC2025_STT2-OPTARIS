@@ -32,8 +32,16 @@ def reset_stepper_pos(stepper_steps_taken):
     print("Stepper pos reset and dir pin set to HIGH")
 
 
-def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0):
-
+def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0, absolute_steps=0):
+    """
+    Move to an XYZ position while respecting the 360-degree rotation limit.
+    
+    Args:
+        pi: pigpio instance
+        x, y, z: Target coordinates in cm
+        current_azimuth_steps: Current position in steps (within one revolution)
+        absolute_steps: Total steps taken from starting position (tracks multiple revolutions)
+    """
     # Convert to polar coordinates
     target_azimuth, target_elevation, distance = xyz_to_polar(x, y, z)
     
@@ -56,6 +64,21 @@ def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0):
             steps_to_move -= STEPS_PER_REVOLUTION
         else:
             steps_to_move += STEPS_PER_REVOLUTION
+            
+    # Check if the move would exceed rotation limits
+    new_absolute_steps = absolute_steps + steps_to_move
+    max_steps = STEPS_PER_REVOLUTION  # One full revolution
+    
+    if abs(new_absolute_steps) > max_steps:
+        print(f"Warning: Movement would exceed ±360° limit. Movement restricted.")
+        # Calculate maximum allowed movement in the desired direction
+        if steps_to_move > 0:
+            steps_to_move = max_steps - absolute_steps
+        else:
+            steps_to_move = -max_steps - absolute_steps
+            
+        if steps_to_move == 0:
+            print("Cannot move further in this direction. At rotation limit.")
     
     # Move stepper motor
     if steps_to_move != 0:
@@ -71,30 +94,34 @@ def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0):
         for _ in range(abs(steps_to_move)):
             stepper_step()
         
-        # Update position
+        # Update positions
         new_azimuth_steps = current_azimuth_steps + steps_to_move
+        new_absolute_steps = absolute_steps + steps_to_move
         
         # Keep steps in valid range
         new_azimuth_steps = new_azimuth_steps % STEPS_PER_REVOLUTION
     else:
         new_azimuth_steps = current_azimuth_steps
+        new_absolute_steps = absolute_steps
             
-    return new_azimuth_steps, target_azimuth, target_elevation, distance
+    return new_azimuth_steps, new_absolute_steps, target_azimuth, target_elevation, distance
 
-def move_to_multiple_xyz_positions(pi, positions, start_azimuth_steps=0, dwell_time=1.0):
+def move_to_multiple_xyz_positions(pi, positions, start_azimuth_steps=0, start_absolute_steps=0, dwell_time=1.0):
     """
-    Move to multiple XYZ positions in sequence.
+    Move to multiple XYZ positions in sequence while respecting the 360-degree rotation limit.
     
     Args:
         pi: pigpio instance
         positions: List of (x, y, z) tuples in cm
-        start_azimuth_steps: Starting stepper position
+        start_azimuth_steps: Starting stepper position within one revolution
+        start_absolute_steps: Starting absolute position tracking multiple revolutions
         dwell_time: Time to wait at each position in seconds
     
     Returns:
-        list: Results for each position [(steps, azimuth, elevation, distance), ...]
+        list: Results for each position [(steps, abs_steps, azimuth, elevation, distance), ...]
     """
     current_steps = start_azimuth_steps
+    current_absolute_steps = start_absolute_steps
     results = []
     
     print(f"Moving to {len(positions)} positions...")
@@ -102,8 +129,9 @@ def move_to_multiple_xyz_positions(pi, positions, start_azimuth_steps=0, dwell_t
     for i, (x, y, z) in enumerate(positions, 1):
         print(f"\n--- Position {i}/{len(positions)} ---")
         
-        result = move_to_xyz_position(pi, x, y, z, current_steps)
+        result = move_to_xyz_position(pi, x, y, z, current_steps, current_absolute_steps)
         current_steps = result[0]  # Update current position
+        current_absolute_steps = result[1]  # Update absolute position
         results.append(result)
         
         if dwell_time > 0:
@@ -154,5 +182,5 @@ def test_xyz_movement(pi):
         results = move_to_multiple_xyz_positions(pi, valid_positions, dwell_time=2.0)
         
         print("\n=== Movement Summary ===")
-        for i, ((x, y, z), (steps, az, el, dist)) in enumerate(zip(valid_positions, results)):
-            print(f"{i+1}: ({x:4.0f},{y:4.0f},{z:4.0f}) → Az:{az:6.1f}°, El:{el:5.1f}°, Steps:{steps}")
+        for i, ((x, y, z), (steps, abs_steps, az, el, dist)) in enumerate(zip(valid_positions, results)):
+            print(f"{i+1}: ({x:4.0f},{y:4.0f},{z:4.0f}) → Az:{az:6.1f}°, El:{el:5.1f}°, Steps:{steps}, Absolute:{abs_steps}")
