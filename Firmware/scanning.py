@@ -128,7 +128,7 @@ def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_az
     
     # Check if we should change state after forward sweep
     if state_change:
-        return current_azimuth, current_elevation, stepper_steps, anomaly_count, True
+        return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, True
     
     # Perform reverse sweep
     current_azimuth, stepper_steps, anomaly_count, state_change = perform_sweep(

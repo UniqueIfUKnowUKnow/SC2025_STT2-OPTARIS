@@ -59,6 +59,7 @@ def main():
     first_scan_positions = []
     first_scan_timestamps = []
     plot_data = []
+    locked_in = 0
 
     try:
         while True:
