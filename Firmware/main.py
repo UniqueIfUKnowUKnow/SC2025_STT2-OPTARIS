@@ -64,54 +64,84 @@ def main():
                 if calibration_done:
                     current_state = states[1]
 
-            elif current_state == "SCANNING":
-                
-                print("Scanning area...")
-                GPIO.output(DIR_PIN, GPIO.HIGH)
+            # Corrected scanning section for main.py
 
-                for i in range ( round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360) ):
-                    # scanning code here
+            elif current_state == "SCANNING":
+                print("Scanning area...")
+                
+                # Forward sweep
+                GPIO.output(DIR_PIN, GPIO.HIGH)
+                print("Forward sweep...")
+                
+                for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
+                    # Step the motor first
                     stepper_step()
                     stepper_steps += 1
-                    current_azimuth += (stepper_steps/STEPS_PER_REVOLUTION)*360
-                    try:
-                        distance = lidar_data_queue.get_nowait()  # or get(block=False)
-                        reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
-                        distance = lidar_data_queue.get_nowait()
-                        if distance < reference * ANOMALY_FACTOR:
-                            anomaly_locations.extend([distance, current_azimuth, current_elevation])
-                            print((distance-(reference*ANOMALY_FACTOR)))
-                        if len(anomaly_locations) > 3:
-                            anomaly_detected = True
-                    except queue.Empty:
-                        continue
-                        
-                if anomaly_detected:
-                    current_state = states[2]
-                
-                GPIO.output(DIR_PIN, GPIO.LOW)
-                for i in range ( round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)     ):
-
-                    # scanning code here
-                    stepper_step()
-                    stepper_steps -= 1
-                    current_azimuth += (stepper_steps/STEPS_PER_REVOLUTION)*360
-                    reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
                     
+                    # Calculate current azimuth position (incremental update)
+                    current_azimuth = (stepper_steps / STEPS_PER_REVOLUTION) * 360
+                    
+                    # Get LiDAR reading
                     try:
-                        distance = lidar_data_queue.get_nowait()  # or get(block=False)
-                        reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
                         distance = lidar_data_queue.get_nowait()
+                        
+                        # Get reference distance for this position
+                        reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
+                        
+                        # Check for anomaly
                         if distance < reference * ANOMALY_FACTOR:
-                            anomaly_locations.extend([distance, current_azimuth, current_elevation])
-                            print((distance-(reference*ANOMALY_FACTOR)))
-                        if len(anomaly_locations) > 3:
+                            # Store as [distance, azimuth, elevation] triplet
+                            anomaly_locations.append([distance, current_azimuth, current_elevation])
+                            print(f"Anomaly detected: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), "
+                                f"expected: {reference:.1f}cm, difference: {distance - (reference * ANOMALY_FACTOR):.1f}cm")
+                            
+                        # Check if we have enough anomalies to declare detection
+                        if len(anomaly_locations) >= 3:  # Note: checking length, not > 3
                             anomaly_detected = True
+                            
                     except queue.Empty:
                         continue
-                        
+                
+                # Check for detection before reverse sweep
                 if anomaly_detected:
                     current_state = states[2]
+                else:
+                    # Reverse sweep
+                    GPIO.output(DIR_PIN, GPIO.LOW)
+                    print("Reverse sweep...")
+                    
+                    for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
+                        # Step the motor first
+                        stepper_step()
+                        stepper_steps -= 1
+                        
+                        # Calculate current azimuth position
+                        current_azimuth = (stepper_steps / STEPS_PER_REVOLUTION) * 360
+                        
+                        # Get LiDAR reading
+                        try:
+                            distance = lidar_data_queue.get_nowait()
+                            
+                            # Get reference distance for this position
+                            reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
+                            
+                            # Check for anomaly
+                            if distance < reference * ANOMALY_FACTOR:
+                                # Store as [distance, azimuth, elevation] triplet
+                                anomaly_locations.append([distance, current_azimuth, current_elevation])
+                                print(f"Anomaly detected: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), "
+                                    f"expected: {reference:.1f}cm, difference: {distance - (reference * ANOMALY_FACTOR):.1f}cm")
+                                
+                            # Check if we have enough anomalies to declare detection
+                            if len(anomaly_locations) >= 3:
+                                anomaly_detected = True
+                                
+                        except queue.Empty:
+                            continue
+                    
+                    # Check for detection after reverse sweep
+                    if anomaly_detected:
+                        current_state = states[2]
 
             elif current_state == "DETECTED":
                 print("Target detected!")

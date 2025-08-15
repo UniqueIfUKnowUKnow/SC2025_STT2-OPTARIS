@@ -1,41 +1,27 @@
-# calibration_lookup.py
+# anomaly_check.py - Simplified radial averaging approach
 import math
 from constants import DEFAULT_CALIBRATION_DISTANCE, ANOMALY_MAX_RADIUS
 
-# Default distance to use when no calibration point is found within range
-
-
-def find_nearest_calibration_points(current_azimuth, current_elevation, calibration_data):
+def get_reference_distance_radial_average(current_azimuth, current_elevation, calibration_data, max_radius=None):
     """
-    Find the 4 nearest calibration points around a given position.
-    Returns distances for the 4 quadrants: (+az,+el), (+az,-el), (-az,+el), (-az,-el)
+    Get a reference distance by averaging all calibration points within a specified angular radius.
     
     Args:
         current_azimuth: Current azimuth angle in degrees
         current_elevation: Current elevation angle in degrees  
         calibration_data: List of [distance, azimuth, elevation] from calibration
-        ANOMALY_MAX_RADIUS: Maximum distance in degrees to search for points (default 3.0)
+        max_radius: Maximum angular distance in degrees to include points (default: ANOMALY_MAX_RADIUS)
         
     Returns:
-        dict: {'plus_az_plus_el': distance, 'plus_az_minus_el': distance, 
-               'minus_az_plus_el': distance, 'minus_az_minus_el': distance}
+        tuple: (reference_distance, num_points_used)
+            - reference_distance: Weighted average distance in cm
+            - num_points_used: Number of calibration points included in average
     """
+    if max_radius is None:
+        max_radius = ANOMALY_MAX_RADIUS
     
-    # Initialize result dictionary with default values
-    result = {
-        'plus_az_plus_el': DEFAULT_CALIBRATION_DISTANCE,
-        'plus_az_minus_el': DEFAULT_CALIBRATION_DISTANCE,
-        'minus_az_plus_el': DEFAULT_CALIBRATION_DISTANCE,
-        'minus_az_minus_el': DEFAULT_CALIBRATION_DISTANCE
-    }
-    
-    # Lists to store candidates for each quadrant
-    quadrant_candidates = {
-        'plus_az_plus_el': [],
-        'plus_az_minus_el': [],
-        'minus_az_plus_el': [],
-        'minus_az_minus_el': []
-    }
+    weighted_distances = []
+    weights = []
     
     # Search through all calibration points
     for cal_distance, cal_azimuth, cal_elevation in calibration_data:
@@ -53,75 +39,93 @@ def find_nearest_calibration_points(current_azimuth, current_elevation, calibrat
         # Calculate total angular distance
         angular_distance = math.sqrt(az_diff**2 + el_diff**2)
         
-        # Skip points outside search radius
-        if angular_distance > ANOMALY_MAX_RADIUS:
-            continue
+        # Include points within the specified radius
+        if angular_distance <= max_radius:
+            # Use inverse distance weighting - closer points have more influence
+            # Add small epsilon to avoid division by zero for exact matches
+            weight = 1.0 / (angular_distance + 0.1)
             
-        # Determine which quadrant this point belongs to
-        if az_diff >= 0 and el_diff >= 0:
-            quadrant = 'plus_az_plus_el'
-        elif az_diff >= 0 and el_diff < 0:
-            quadrant = 'plus_az_minus_el'
-        elif az_diff < 0 and el_diff >= 0:
-            quadrant = 'minus_az_plus_el'
-        else:  # az_diff < 0 and el_diff < 0
-            quadrant = 'minus_az_minus_el'
-            
-        # Add to candidates with distance info
-        quadrant_candidates[quadrant].append((angular_distance, cal_distance))
+            weighted_distances.append(cal_distance * weight)
+            weights.append(weight)
     
-    # Find the nearest point in each quadrant
-    for quadrant in quadrant_candidates:
-        if quadrant_candidates[quadrant]:
-            # Sort by angular distance and take the closest
-            quadrant_candidates[quadrant].sort(key=lambda x: x[0])
-            nearest_distance = quadrant_candidates[quadrant][0][1]  # Get the calibration distance
-            result[quadrant] = nearest_distance
+    # Calculate weighted average if we have points, otherwise use default
+    if weights:
+        reference_distance = sum(weighted_distances) / sum(weights)
+        num_points_used = len(weights)
+    else:
+        reference_distance = DEFAULT_CALIBRATION_DISTANCE
+        num_points_used = 0
     
-    return result
+    return reference_distance, num_points_used
 
-def get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data):
+def get_reference_distance_simple_average(current_azimuth, current_elevation, calibration_data, max_radius=None):
     """
-    Get an interpolated reference distance based on the 4 nearest calibration points.
-    This provides a single reference value for anomaly detection.
+    Get a reference distance using simple averaging (no weighting) of all points within radius.
     
     Args:
         current_azimuth: Current azimuth angle in degrees
-        current_elevation: Current elevation angle in degrees
-        calibration_data: List of [distance, azimuth, elevation] from calibration  
-        ANOMALY_MAX_RADIUS: Maximum distance in degrees to search for points
+        current_elevation: Current elevation angle in degrees  
+        calibration_data: List of [distance, azimuth, elevation] from calibration
+        max_radius: Maximum angular distance in degrees to include points (default: ANOMALY_MAX_RADIUS)
         
     Returns:
-        float: Interpolated reference distance in cm
+        tuple: (reference_distance, num_points_used)
     """
+    if max_radius is None:
+        max_radius = ANOMALY_MAX_RADIUS
     
-    # Get the 4 nearest points
-    nearest_points = find_nearest_calibration_points(current_azimuth, current_elevation, 
-                                                   calibration_data)
+    distances_in_range = []
     
-    # Simple average of the 4 quadrant distances
-    distances = list(nearest_points.values())
-    reference_distance = sum(distances) / len(distances)
+    # Search through all calibration points
+    for cal_distance, cal_azimuth, cal_elevation in calibration_data:
+        
+        # Calculate angular differences
+        az_diff = cal_azimuth - current_azimuth
+        el_diff = cal_elevation - current_elevation
+        
+        # Handle azimuth wrap-around
+        if az_diff > 180:
+            az_diff -= 360
+        elif az_diff < -180:
+            az_diff += 360
+            
+        # Calculate total angular distance
+        angular_distance = math.sqrt(az_diff**2 + el_diff**2)
+        
+        # Include points within the specified radius
+        if angular_distance <= max_radius:
+            distances_in_range.append(cal_distance)
     
-    return reference_distance
+    # Calculate simple average if we have points, otherwise use default
+    if distances_in_range:
+        reference_distance = sum(distances_in_range) / len(distances_in_range)
+        num_points_used = len(distances_in_range)
+    else:
+        reference_distance = DEFAULT_CALIBRATION_DISTANCE
+        num_points_used = 0
+    
+    return reference_distance, num_points_used
 
-def find_closest_single_point(current_azimuth, current_elevation, calibration_data):
+def find_nearest_calibration_point(current_azimuth, current_elevation, calibration_data):
     """
-    Find the single closest calibration point to the current position.
-    Simpler alternative if you just need the nearest neighbor.
+    Find the single nearest calibration point and return its distance.
+    Useful for debugging or as a fallback method.
     
     Args:
         current_azimuth: Current azimuth angle in degrees
         current_elevation: Current elevation angle in degrees
         calibration_data: List of [distance, azimuth, elevation] from calibration
-        ANOMALY_MAX_RADIUS: Maximum distance in degrees to search for points
         
     Returns:
-        float: Distance from closest calibration point, or DEFAULT_CALIBRATION_DISTANCE if none found
+        tuple: (distance, angular_distance, azimuth, elevation)
+            - distance: Distance from nearest calibration point
+            - angular_distance: Angular separation to nearest point
+            - azimuth, elevation: Position of nearest calibration point
     """
     
     closest_distance = float('inf')
     closest_cal_distance = DEFAULT_CALIBRATION_DISTANCE
+    closest_position = (0, 0)
     
     for cal_distance, cal_azimuth, cal_elevation in calibration_data:
         # Calculate angular differences
@@ -137,35 +141,111 @@ def find_closest_single_point(current_azimuth, current_elevation, calibration_da
         # Calculate total angular distance
         angular_distance = math.sqrt(az_diff**2 + el_diff**2)
         
-        # Check if this is the closest point within range
-        if angular_distance < closest_distance and angular_distance <= ANOMALY_MAX_RADIUS:
+        # Check if this is the closest point
+        if angular_distance < closest_distance:
             closest_distance = angular_distance
             closest_cal_distance = cal_distance
+            closest_position = (cal_azimuth, cal_elevation)
     
-    return closest_cal_distance
+    return closest_cal_distance, closest_distance, closest_position[0], closest_position[1]
 
-# Example usage:
+def get_adaptive_reference_distance(current_azimuth, current_elevation, calibration_data):
+    """
+    Adaptive reference distance calculation that adjusts the search radius based on point density.
+    Starts with a small radius and expands until enough points are found.
+    
+    Args:
+        current_azimuth: Current azimuth angle in degrees
+        current_elevation: Current elevation angle in degrees
+        calibration_data: List of [distance, azimuth, elevation] from calibration
+        
+    Returns:
+        tuple: (reference_distance, radius_used, num_points_used)
+    """
+    min_points_needed = 3  # Minimum points for a good average
+    max_points_needed = 10  # Don't need more than this for averaging
+    
+    # Try progressively larger radii
+    radii_to_try = [2.0, 5.0, 10.0, 15.0, 20.0, 30.0]
+    
+    for radius in radii_to_try:
+        ref_distance, num_points = get_reference_distance_radial_average(
+            current_azimuth, current_elevation, calibration_data, radius
+        )
+        
+        if num_points >= min_points_needed:
+            return ref_distance, radius, num_points
+    
+    # If we still don't have enough points, use the largest radius attempted
+    ref_distance, num_points = get_reference_distance_radial_average(
+        current_azimuth, current_elevation, calibration_data, radii_to_try[-1]
+    )
+    
+    return ref_distance, radii_to_try[-1], num_points
+
+# Convenience function that maintains backward compatibility with your existing code
+def get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data):
+    """
+    Main function for getting reference distance - maintains compatibility with existing code.
+    Uses weighted averaging of all points within ANOMALY_MAX_RADIUS.
+    
+    Args:
+        current_azimuth: Current azimuth angle in degrees
+        current_elevation: Current elevation angle in degrees
+        calibration_data: List of [distance, azimuth, elevation] from calibration
+        
+    Returns:
+        float: Reference distance in cm
+    """
+    reference_distance, _ = get_reference_distance_radial_average(
+        current_azimuth, current_elevation, calibration_data
+    )
+    return reference_distance
+
+# Example usage and testing
 if __name__ == "__main__":
     # Example calibration data: [distance, azimuth, elevation]
     sample_calibration = [
         [150.0, 45.0, 10.0],
         [200.0, 47.0, 12.0], 
         [180.0, 43.0, 8.0],
-        [160.0, 45.5, 10.5]
+        [160.0, 45.5, 10.5],
+        [170.0, 44.0, 9.0],
+        [190.0, 46.0, 11.0],
+        [155.0, 45.2, 10.2]
     ]
     
-    # Test the functions
+    # Test position
     current_az = 45.0
     current_el = 10.0
     
-    # Get 4 quadrant points
-    quadrant_points = find_nearest_calibration_points(current_az, current_el, sample_calibration)
-    print("Quadrant distances:", quadrant_points)
+    print(f"Testing at position: Az={current_az}°, El={current_el}°")
+    print("=" * 50)
     
-    # Get interpolated reference
-    ref_distance = get_interpolated_reference_distance(current_az, current_el, sample_calibration)
-    print(f"Interpolated reference distance: {ref_distance:.1f} cm")
+    # Test weighted averaging
+    ref_dist_weighted, num_points_weighted = get_reference_distance_radial_average(
+        current_az, current_el, sample_calibration, max_radius=5.0
+    )
+    print(f"Weighted average (5° radius): {ref_dist_weighted:.1f} cm using {num_points_weighted} points")
     
-    # Get single closest point
-    closest = find_closest_single_point(current_az, current_el, sample_calibration)
-    print(f"Closest single point distance: {closest:.1f} cm")
+    # Test simple averaging
+    ref_dist_simple, num_points_simple = get_reference_distance_simple_average(
+        current_az, current_el, sample_calibration, max_radius=5.0
+    )
+    print(f"Simple average (5° radius): {ref_dist_simple:.1f} cm using {num_points_simple} points")
+    
+    # Test adaptive radius
+    ref_dist_adaptive, radius_used, num_points_adaptive = get_adaptive_reference_distance(
+        current_az, current_el, sample_calibration
+    )
+    print(f"Adaptive radius: {ref_dist_adaptive:.1f} cm using {num_points_adaptive} points (radius: {radius_used}°)")
+    
+    # Test nearest neighbor
+    nearest_dist, angular_dist, nearest_az, nearest_el = find_nearest_calibration_point(
+        current_az, current_el, sample_calibration
+    )
+    print(f"Nearest neighbor: {nearest_dist:.1f} cm at ({nearest_az}°, {nearest_el}°), distance: {angular_dist:.2f}°")
+    
+    # Test backward compatibility
+    ref_dist_compat = get_interpolated_reference_distance(current_az, current_el, sample_calibration)
+    print(f"Backward compatible function: {ref_dist_compat:.1f} cm")
