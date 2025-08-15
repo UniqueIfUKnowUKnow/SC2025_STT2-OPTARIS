@@ -85,7 +85,7 @@ def main():
                 #Sweeping for points
                 current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, should_change_state = perform_scanning_sequence(
                     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 
+                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 5
                 )
                 
                 first_scan_positions = anomaly_averaged_coords[:, :3]

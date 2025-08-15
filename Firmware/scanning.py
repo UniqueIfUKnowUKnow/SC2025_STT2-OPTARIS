@@ -91,7 +91,7 @@ def perform_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, curre
 
 def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_azimuth, 
                             current_elevation, stepper_steps, anomaly_locations, 
-                            anomaly_averaged_coords, anomaly_count, detections_count):
+                            anomaly_averaged_coords, anomaly_count, detections_required):
     """
     Perform a complete scanning sequence (forward and reverse sweeps).
     
@@ -136,7 +136,7 @@ def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_az
     )
     
     # Final check for state change
-    if anomaly_count >= detections_count:
+    if anomaly_count >= detections_required:
         state_change = True
     
     return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, state_change
