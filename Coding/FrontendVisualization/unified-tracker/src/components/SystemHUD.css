@@ -1,3 +1,9 @@
+/* Collapsible panel header arrow */
+.collapsible-header span:first-child {
+  font-size: 1.1em;
+  transition: transform 0.2s;
+  display: inline-block;
+}
 /* SystemHUD.css - Styling for the Heads-Up Display interface */
 
 /* Main HUD overlay that covers the entire screen */
