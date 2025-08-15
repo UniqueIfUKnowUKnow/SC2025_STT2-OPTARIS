@@ -20,7 +20,7 @@ STEPS_PER_REVOLUTION = 6400
 STEPPER_PULSE_DELAY = 0.0001
 MIN_PULSE_WIDTH = 500
 MAX_PULSE_WIDTH = 2500
-SERVO_UPDATE_INTERVAL = 0.01
+SERVO_UPDATE_INTERVAL = 0.015
 
 # Stepper and Servo Sweep Settings
 STEPPER_SWEEP_DEGREES = 360
@@ -37,7 +37,7 @@ SENSOR_MAX = 1300
 DEFAULT_CALIBRATION_DISTANCE = 1200  # cm - adjust based on your environment
 ANOMALY_MAX_RADIUS = 10.0 # max degree range in which to average points
 SWEEP_RANGE = 10
-ANOMALY_FACTOR = 0.7
+ANOMALY_FACTOR = 0.8
 
 
 # -----------------------

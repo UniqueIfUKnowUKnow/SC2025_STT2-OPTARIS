@@ -96,8 +96,15 @@ def main():
                         # Get reference distance for this position
                         reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
                         
+                        
+                        
+                        print(distance - (reference * ANOMALY_FACTOR))
+                        
+                        
+                        
                         # Check for anomaly
                         if distance < reference * ANOMALY_FACTOR:
+
                             # Store as [distance, azimuth, elevation] triplet
                             anomaly_locations.append([distance, current_azimuth, current_elevation])
                             print(f"Anomaly detected: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), "
@@ -135,6 +142,10 @@ def main():
                         # Get reference distance for this position
                         reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
                         
+
+                        print(distance - (reference * ANOMALY_FACTOR))
+
+
                         # Check for anomaly
                         if distance < reference * ANOMALY_FACTOR:
                             # Store as [distance, azimuth, elevation] triplet
