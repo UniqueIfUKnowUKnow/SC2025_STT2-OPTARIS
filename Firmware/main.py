@@ -12,6 +12,7 @@ from move_motors import *
 from calibration import *
 from tle_processing import parse_tle
 from anomaly_check import get_interpolated_reference_distance
+from scanning import perform_scanning_sequence
 
 # --- Main Application ---
 def main():
@@ -71,108 +72,24 @@ def main():
             elif current_state == "SCANNING":
                 print("Scanning area...")
                 
-                # Lidar queue and data reset
-                GPIO.output(DIR_PIN, GPIO.HIGH)
-                print("Forward sweep...")
-                while not lidar_data_queue.empty():
-                    try:
-                        lidar_data_queue.get_nowait()
-                    except queue.Empty:
-                        break
-                # Forward sweep
+                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, should_change_state = perform_scanning_sequence(
+                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count
+                )
                 
-                for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
-                    # Step the motor first
-                    stepper_step()
-                    stepper_steps += 1
-                    time.sleep(0.0005)
-
-                    # Calculate current azimuth position (incremental update)
-                    current_azimuth = (stepper_steps / STEPS_PER_REVOLUTION) * 360
-                    
-                    # Get LiDAR reading
-                    try:
-                        distance = lidar_data_queue.get_nowait()
-                        
-                        # Get reference distance for this position
-                        reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
-                        
-                        
-                        
-                        print(distance - (reference * ANOMALY_FACTOR))
-                        
-                        
-                        
-                        # Check for anomaly
-                        if distance < reference * ANOMALY_FACTOR:
-
-                            # Store as [distance, azimuth, elevation] triplet
-                            anomaly_locations.append([distance, current_azimuth, current_elevation])
-                            print(f"Anomaly detected: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), "
-                                f"expected: {reference:.1f}cm, difference: {distance - (reference * ANOMALY_FACTOR):.1f}cm")
-                            
-                        # Check if we have enough anomalies to declare detection
-                        if len(anomaly_locations) >= 3:
-                                anomaly_averaged_coords.append([tuple(round(sum(col) / len(col), 2) for col in zip(*anomaly_locations))])
-                                anomaly_locations = []
-                                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10+SWEEP_RANGE, current_elevation , stepper_steps)
-                                anomaly_count += 1
-   
-                    except queue.Empty:
-                        continue
-
-                    if anomaly_count >= 3:
-                        current_state = states[2]     
-
-                # Reverse sweep
-                GPIO.output(DIR_PIN, GPIO.LOW)
-                print("Reverse sweep...")
-                
-                for i in range(round(STEPS_PER_REVOLUTION * SWEEP_RANGE / 360)):
-                    # Step the motor first
-                    stepper_step()
-                    stepper_steps -= 1
-                    time.sleep(0.0005)
-                    # Calculate current azimuth position
-                    current_azimuth = (stepper_steps / STEPS_PER_REVOLUTION) * 360
-                    
-                    # Get LiDAR reading
-                    try:
-                        distance = lidar_data_queue.get_nowait()
-                        
-                        # Get reference distance for this position
-                        reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
-                        
-
-                        print(distance - (reference * ANOMALY_FACTOR))
-
-
-                        # Check for anomaly
-                        if distance < reference * ANOMALY_FACTOR:
-                            # Store as [distance, azimuth, elevation] triplet
-                            anomaly_locations.append([distance, current_azimuth, current_elevation])
-                            print(f"Anomaly detected: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), "
-                                f"expected: {reference:.1f}cm, difference: {distance - (reference * ANOMALY_FACTOR):.1f}cm")
-                            
-                        # Check if we have enough anomalies to declare detection
-                        if len(anomaly_locations) >= 3:
-                            anomaly_averaged_coords.append([tuple(round(sum(col) / len(col), 2) for col in zip(*anomaly_locations))])
-                            anomaly_locations = []
-                            current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10+SWEEP_RANGE, current_elevation , stepper_steps)
-                            anomaly_count += 1
-                            
-                    except queue.Empty:
-                        continue
-
-
-                if anomaly_count >= 3:
-                    print(anomaly_averaged_coords)
+                print(anomaly_averaged_coords)
+                if should_change_state:
                     current_state = states[2]
 
             elif current_state == "DETECTED":
                 print("Target detected!")
                 # detection handling code here
-                
+                print("Cleaning up...")
+
+                pi.set_servo_pulsewidth(SERVO_PIN, 0)
+                reset_stepper_pos(stepper_steps)
+                pi.stop()
+                GPIO.cleanup()
                 break
         
     except KeyboardInterrupt:
@@ -180,9 +97,9 @@ def main():
     finally:
         print("Cleaning up...")
         pi.set_servo_pulsewidth(SERVO_PIN, 0)
+        reset_stepper_pos(stepper_steps)
         pi.stop()
         GPIO.cleanup()
-        reset_stepper_pos(stepper_steps)
         
 
 if __name__ == '__main__':
