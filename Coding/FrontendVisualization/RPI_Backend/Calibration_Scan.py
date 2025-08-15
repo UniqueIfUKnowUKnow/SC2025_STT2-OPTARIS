@@ -44,7 +44,7 @@ LIDAR_BAUD_RATE = 115200
 # --- WebSocket Configuration ---
 # NEW: These settings control the WebSocket server that broadcasts data to the frontend
 WEBSOCKET_HOST = '0.0.0.0'  # Listen on all network interfaces (allows external connections)
-WEBSOCKET_PORT = 8765        # Port number for WebSocket connections
+WEBSOCKET_PORT = 8080        # Port number for WebSocket connections
 WEBSOCKET_CLIENTS = set()    # NEW: Set to store all connected frontend clients
 
 # --- Motor & Movement Settings --- 
