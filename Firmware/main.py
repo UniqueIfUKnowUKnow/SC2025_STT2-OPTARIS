@@ -88,8 +88,10 @@ def main():
                     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 5
                 )
                 
-                first_scan_positions = anomaly_averaged_coords[:, :3]
-                first_scan_timestamps = anomaly_averaged_coords[:, 3:]
+            elif current_state == "DETECTED":
+                coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
+                first_scan_positions = coords_array[:, :3]
+                first_scan_timestamps = coords_array[:, 3:]
                 kf.process_measurement_sequence(first_scan_positions, first_scan_timestamps)
 
                 for dist, az_deg, el_deg in first_scan_positions:
@@ -101,8 +103,7 @@ def main():
                     anomaly_averaged_coords = []
                     plot_data = first_scan_positions
                     current_state = states[2]
-                    
-            elif current_state == "DETECTED":
+
                 print("Target detected! Starting EKF tracking...")
                 # Clear LiDAR queue before starting
                 while not lidar_data_queue.empty():
@@ -111,24 +112,49 @@ def main():
                     except queue.Empty:
                         break
 
-                locked_in = True
-                while locked_in < 20:
-                    #Get Predicted positions 1 sec in future, convert to degrees and move motors there
-                    predicted_position = kf.predict_future_positions(first_scan_timestamps[-1] + 1)
+                max_tracking_cycles = 20
+    
+                while locked_in < max_tracking_cycles:
+                    # Get Predicted positions 1 sec in future
+                    current_time = first_scan_timestamps[-1] if len(first_scan_timestamps) > 0 else time.time()
+                    future_time = current_time + 1
+                    
+                    predicted_positions = kf.predict_future_positions([future_time])
+                    predicted_position = predicted_positions[0]  # Get first (and only) prediction
+                    
+                    # Convert to degrees and move motors there
                     pos_deg = [predicted_position[0], np.degrees(predicted_position[1]), np.degrees(predicted_position[2])]
-                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, pos_deg[1], pos_deg[2] , stepper_steps)
+                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, pos_deg[1], pos_deg[2], stepper_steps)
                     
+                    # Perform single detection scan
+                    current_azimuth, current_elevation, stepper_steps, new_anomaly_coords, anomaly_count, should_change_state = perform_scanning_sequence(
+                        pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                        stepper_steps, anomaly_locations, [], 0, 1  # Reset anomaly tracking for single detection
+                    )   
                     
-                    current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, should_change_state = perform_scanning_sequence(
-                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 1
-                )   
-                    current_measurement = [anomaly_averaged_coords[0], anomaly_averaged_coords[1], anomaly_averaged_coords[2]]
-                    kf.update_with_delayed_measurement(current_measurement, anomaly_averaged_coords[3])
+                    # Process new measurement if found
+                    if new_anomaly_coords and len(new_anomaly_coords) > 0:
+                        # Extract the measurement data
+                        coord_data = new_anomaly_coords[0][0]  # Get the tuple from the nested structure
+                        current_measurement = [coord_data[0], coord_data[1], coord_data[2]]  # [distance, azimuth, elevation]
+                        measurement_time = coord_data[3]  # timestamp
+                        
+                        # Update Kalman filter with the new measurement
+                        # Note: update_with_delayed_measurement doesn't exist in your Kalman filter
+                        # Use update_with_measurement_at_time instead
+                        kf.update_with_measurement_at_time(
+                            [current_measurement[0], np.radians(current_measurement[1]), np.radians(current_measurement[2])], 
+                            measurement_time
+                        )
+                        
+                        plot_data.append((current_measurement[0], current_measurement[1], current_measurement[2]))
+                        print(f"Tracking cycle {locked_in + 1}: Updated with measurement at ({current_measurement[1]:.1f}°, {current_measurement[2]:.1f}°)")
+                    else:
+                        print(f"Tracking cycle {locked_in + 1}: No target detected at predicted position")
                     
-                    anomaly_count = 0
                     locked_in += 1
-                    plot_data.append((current_measurement[0], current_measurement[1], current_measurement[2]))
+                
+                print("Tracking complete. Saving trajectory data...")
                 save_calibration_data(plot_data)
                 
                 

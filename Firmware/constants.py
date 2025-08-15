@@ -35,7 +35,7 @@ DEFAULT_CALIBRATION_DISTANCE = 1200  # cm - adjust based on your environment
 SENSOR_MAX = 1200
 ANOMALY_MAX_RADIUS = 5.0 # max degree range in which to average points
 SWEEP_RANGE = 10
-ANOMALY_FACTOR = 0.7
+ANOMALY_FACTOR = 0.6
 INITIAL_SWEEP_DETECTIONS_COUNT = 5
 
 
