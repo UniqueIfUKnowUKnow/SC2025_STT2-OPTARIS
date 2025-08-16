@@ -1,3 +1,4 @@
+
 import React, { useRef, useMemo } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
 import { TextureLoader } from 'three';
@@ -6,8 +7,10 @@ import * as THREE from 'three';
 const RealisticEarth = ({ radius = 6.371 }) => {
   const earthRef = useRef();
   
+
   // Load the Earth day texture
   const dayTexture = useLoader(TextureLoader, '/textures/earth_daymap.jpg');
+
 
   // Create material with the Earth texture
   const earthMaterial = useMemo(() => {

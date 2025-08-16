@@ -81,7 +81,11 @@ def main():
                 save_calibration_data(calibration_data)
 
                 # Moving to right of ascending node
+<<<<<<< HEAD
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
+=======
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 70 , stepper_steps)
+>>>>>>> refs/remotes/origin/main
 
                 calibration_done = True
                 if calibration_done:

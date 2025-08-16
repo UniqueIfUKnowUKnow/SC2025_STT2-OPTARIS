@@ -1,3 +1,75 @@
+# =========================
+# Tracking from 5 Points Function
+# =========================
+from collections import deque
+
+def make_ellipse_tracker(initial_points, prediction_step_angle=2.0):
+    """
+    Create a tracker that, given 5 initial detected points, can track and predict the object's trajectory
+    as new points are added one by one.
+    Args:
+        initial_points (list): List of 5 (angle, distance) tuples.
+        prediction_step_angle (float): Angle step for prediction (degrees).
+    Returns:
+        function: tracker(new_point) -> (predicted_angle, predicted_distance)
+    """
+    if len(initial_points) != 5:
+        raise ValueError("Exactly 5 initial points are required.")
+    buffer = deque(initial_points, maxlen=5)
+    def tracker(new_point):
+        buffer.append(new_point)
+        cartesian_points = np.array([
+            (dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle)))
+            for angle, dist in buffer
+        ])
+        ellipse = ConicSection.fit_from_points(cartesian_points)
+        if not ellipse.is_ellipse():
+            return None, None
+        last_angle = buffer[-1][0]
+        next_angle = last_angle + prediction_step_angle
+        predicted_distance = ellipse.predict_distance(next_angle)
+        if predicted_distance is None:
+            return None, None
+        return next_angle, predicted_distance
+    return tracker
+# =========================
+# Real-Time Tracking Function
+# =========================
+from collections import deque
+
+def track_object_realtime(data_stream, buffer_size=5, prediction_step_angle=2.0):
+    """
+    Continuously track and predict the object's position using a moving window of the last N points.
+    Args:
+        data_stream (iterable): An iterable or generator yielding (angle, distance) tuples in real time.
+        buffer_size (int): Number of recent points to use for fitting (default 5).
+        prediction_step_angle (float): Angle step for prediction (degrees).
+    Yields:
+        tuple: (predicted_angle, predicted_distance) for each new data point, or (None, None) if not enough data.
+    """
+    buffer = deque(maxlen=buffer_size)
+    for point in data_stream:
+        buffer.append(point)
+        if len(buffer) < buffer_size:
+            # Not enough points yet to fit
+            yield None, None
+            continue
+        # Fit and predict
+        cartesian_points = np.array([
+            (dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle)))
+            for angle, dist in buffer
+        ])
+        ellipse = ConicSection.fit_from_points(cartesian_points)
+        if not ellipse.is_ellipse():
+            yield None, None
+            continue
+        last_angle = buffer[-1][0]
+        next_angle = last_angle + prediction_step_angle
+        predicted_distance = ellipse.predict_distance(next_angle)
+        if predicted_distance is None:
+            yield None, None
+        else:
+            yield next_angle, predicted_distance
 
 import numpy as np
 import math
@@ -118,5 +190,8 @@ def predict_ellipse_trajectory(detected_points_polar):
         print("Prediction failed: No real solution for the next point.")
         return None, None
     return next_angle, predicted_distance
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> refs/remotes/origin/main
