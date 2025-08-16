@@ -100,7 +100,7 @@ def main():
                 anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
                 first_scan_positions = coords_array[:, :3]
-                first_scan_timestamps = coords_array[:, 3:]
+                first_scan_timestamps = coords_array[:, 3:].flatten()
                 kf.process_measurement_sequence(first_scan_positions, first_scan_timestamps)
 
                 for dist, az_deg, el_deg in first_scan_positions:
