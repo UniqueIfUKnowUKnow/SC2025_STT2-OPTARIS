@@ -1,4 +1,6 @@
+
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import './CollapsiblePanel.css';
 
 // Simple collapsible panel for HUD sections
@@ -13,7 +15,19 @@ const CollapsiblePanel = ({ title, children }) => {
       >
         {title} <span style={{ float: 'right' }}>{open ? '▲' : '▼'}</span>
       </div>
-      {open && <div className="collapsible-content">{children}</div>}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            className="collapsible-content"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.25 }}
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

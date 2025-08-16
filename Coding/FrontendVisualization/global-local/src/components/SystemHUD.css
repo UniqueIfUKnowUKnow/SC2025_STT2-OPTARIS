@@ -118,35 +118,47 @@
   border: none;
   border-radius: 8px;
   font-size: 0.9rem;
+  background: #222b3a;
+  color: #fff;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,255,136,0.08);
+  transition: background 0.25s, color 0.25s, transform 0.15s, box-shadow 0.25s;
   cursor: pointer;
-  transition: all 0.3s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+}
+
+.control-buttons button:hover, .control-buttons button:focus {
+  background: #181f2a;
+  color: #fff;
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 6px 24px rgba(0,255,136,0.18);
+  outline: none;
 }
 
 /* Start button styling */
+/* Start button styling */
+/* Start, Stop, and Reset buttons: solid colors only, no gradients */
 .start-btn {
-  background: linear-gradient(45deg, #00ff88, #00cc6a);
-  color: #000000;
+  background: #00ccff;
+  color: #fff;
 }
 
 .start-btn:hover {
-  background: linear-gradient(45deg, #00cc6a, #00ff88);
+  background: #0099cc;
+  color: #fff;
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 255, 136, 0.4);
+  box-shadow: 0 5px 15px rgba(0, 204, 255, 0.18);
 }
 
-/* Stop button styling */
 .stop-btn {
-  background: linear-gradient(45deg, #ff6b35, #ff4444);
-  color: #ffffff;
+  background: #888888;
+  color: #fff;
 }
 
 .stop-btn:hover:not(:disabled) {
-  background: linear-gradient(45deg, #ff4444, #ff6b35);
+  background: #555555;
+  color: #fff;
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(255, 107, 53, 0.4);
+  box-shadow: 0 5px 15px rgba(136, 136, 136, 0.18);
 }
 
 .stop-btn:disabled {
@@ -156,16 +168,23 @@
   transform: none;
 }
 
-/* Reset button styling */
 .reset-btn {
-  background: linear-gradient(45deg, #4e9cff, #0066cc);
-  color: #ffffff;
+  background: #2196f3;
+  color: #fff;
 }
 
 .reset-btn:hover {
-  background: linear-gradient(45deg, #0066cc, #4e9cff);
+  background: #1565c0;
+  color: #fff;
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(78, 156, 255, 0.4);
+  box-shadow: 0 5px 15px rgba(33, 150, 243, 0.18);
+}
+
+.reset-btn:hover {
+  background: #1565c0;
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(33, 150, 243, 0.18);
 }
 
 /* View switch button styling */

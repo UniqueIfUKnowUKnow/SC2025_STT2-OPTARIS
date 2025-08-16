@@ -1,0 +1,2 @@
+// Add this to your package.json dependencies:
+// "framer-motion": "^11.0.0"
