@@ -79,7 +79,7 @@ def perform_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, curre
                 anomaly_count += 1
                 if anomaly_count < detections_required and detections_required > 1:
                     current_azimuth, current_elevation, stepper_steps = move_to_polar_position(
-                        pi, current_azimuth + SWEEP_RANGE, current_elevation, stepper_steps)
+                        pi, current_azimuth, current_elevation +5, stepper_steps)
                     
             print(anomaly_count, detections_required)
         except queue.Empty:
