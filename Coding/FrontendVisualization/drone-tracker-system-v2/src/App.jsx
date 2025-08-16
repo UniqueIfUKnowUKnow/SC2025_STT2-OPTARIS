@@ -42,7 +42,9 @@ class ErrorBoundary extends React.Component {
 }
 
 // WebSocket server URL - IMPORTANT: Change this to your backend server's IP address
-const WEBSOCKET_URL = 'ws://192.168.55.180:5678'; // <-- IMPORTANT: Use your server's IP
+// const WEBSOCKET_URL = 'ws://192.168.55.180:5678'; // <-- IMPORTANT: Use your server's IP
+const WEBSOCKET_URL = 'ws://192.168.55.254:8765'; // <-- IMPORTANT: Use your server's IP
+
 
 // Main App component that orchestrates the entire application
 function App() {

@@ -119,20 +119,4 @@ def predict_ellipse_trajectory(detected_points_polar):
         return None, None
     return next_angle, predicted_distance
 
-# =========================
-# Example Usage
-# =========================
-if __name__ == "__main__":
-    # Sample input of 5 detected points (angle in degrees, distance in cm)
-    detected_points = [
-        (40.0, 100.0),
-        (45.0, 95.0),
-        (50.0, 88.0),
-        (55.0, 80.0),
-        (60.0, 75.0)
-    ]
-    # Predict the next point on the ellipse trajectory
-    predicted_angle, predicted_distance = predict_ellipse_trajectory(detected_points)
-    if predicted_angle is not None:
-        print(f"Predicted Angle: {predicted_angle:.2f} degrees")
-        print(f"Predicted Distance: {predicted_distance:.2f} cm")
+
