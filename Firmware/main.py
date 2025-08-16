@@ -53,7 +53,7 @@ def main():
     current_elevation = 0
     anomaly_detected = False
     anomaly_locations = []
-    anomaly_count = 0
+    
     anomaly_averaged_coords = []
     initial_rad = []
     first_scan_positions = []
@@ -84,9 +84,9 @@ def main():
                 print("Scanning area...")
                 
                 #Sweeping for points
-                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, should_change_state = perform_scanning_sequence(
+                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, should_change_state = perform_scanning_sequence(
                     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 5
+                    stepper_steps, anomaly_locations, anomaly_averaged_coords, 5
                 )
                 
             elif current_state == "DETECTED":
@@ -98,7 +98,6 @@ def main():
                 for dist, az_deg, el_deg in first_scan_positions:
                     initial_rad.append([dist, np.radians(az_deg), np.radians(el_deg)])
                 
-                anomaly_count = 0
                 print(anomaly_averaged_coords)
                 if should_change_state:
                     anomaly_averaged_coords = []
@@ -128,10 +127,10 @@ def main():
                     current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, pos_deg[1], pos_deg[2], stepper_steps)
                     
                     # Perform single detection scan
-                    current_azimuth, current_elevation, stepper_steps, new_anomaly_coords, anomaly_count, should_change_state = perform_scanning_sequence(
+                    current_azimuth, current_elevation, stepper_steps, new_anomaly_coords, should_change_state = perform_scanning_sequence(
                         pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
                         stepper_steps, anomaly_locations, [], 0, 1  # Reset anomaly tracking for single detection
-                    )   
+                    )
                     
                     # Process new measurement if found
                     if new_anomaly_coords and len(new_anomaly_coords) > 0:
