@@ -16,7 +16,7 @@ import websockets  # A library for real-time communication between server and we
 
 # --- Configuration ---
 HOST = "0.0.0.0"  # This means "listen for connections on all available network interfaces"
-PORT = 5678       # The network port number clients will connect to
+PORT = 8765       # The network port number clients will connect to
 POSITION_HISTORY_MAX_LENGTH = 50  # We'll remember only the last 50 position points
 
 # Scanner simulation configuration
