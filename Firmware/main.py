@@ -65,6 +65,8 @@ def main():
     anomaly_total = 0
 
     #Tracking constants for "DETECTED" state
+    azi_filter = []
+    tilt_filter = []
     ang_filter = []
     angvel_filter = []
     variance = []
@@ -81,11 +83,7 @@ def main():
                 save_calibration_data(calibration_data)
 
                 # Moving to right of ascending node
-<<<<<<< HEAD
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
-=======
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 70 , stepper_steps)
->>>>>>> refs/remotes/origin/main
 
                 calibration_done = True
                 if calibration_done:
@@ -106,64 +104,77 @@ def main():
                 if calibration_done:
                     current_state = states[2]
 
-            # elif current_state == "DETECTED":
+            elif current_state == "DETECTED":
                 
-            #     anomaly_count = 0
-            #     coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
-            #     first_scan_pos = coords_array[:, :3]
-            #     first_scan_time = coords_array[:, 3:].flatten()
+                anomaly_count = 0
+                coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
+                first_scan_pos = coords_array[:, :3]
+                first_scan_time = coords_array[:, 3:].flatten()
                 
-            #     # Convert degrees to radians for Kalman filter
-            #     first_scan_pos_rad = []
-            #     for i, pos in enumerate(first_scan_pos):
-            #         dist, az_deg, el_deg = pos[0], pos[1], pos[2]
-            #         # Convert to radians
-            #         az_rad = np.radians(az_deg)
-            #         el_rad = np.radians(el_deg)
-            #         first_scan_pos_rad.append([dist, az_rad, el_rad])
+                # Convert degrees to radians for Kalman filter
+                first_scan_pos_rad = []
+                for i, pos in enumerate(first_scan_pos):
+                    dist, az_deg, el_deg = pos[0], pos[1], pos[2]
+                    # Convert to radians
+                    az_rad = np.radians(az_deg)
+                    el_rad = np.radians(el_deg)
+                    first_scan_pos_rad.append([dist, az_rad, el_rad])
                 
-            #     #Calculate least-square slope
-            #     t_mean = np.mean(first_scan_time)
-            #     theta_mean = np.mean(az_rad)
-            #     phi_mean = np.mean(el_rad)
+                #Calculate least-square slope
+                t_mean = np.mean(first_scan_time)
+                theta_mean = np.mean(az_rad)
+                phi_mean = np.mean(el_rad)
                 
-            #     numerator = np.sum((first_scan_time - t_mean) * (az_rad - theta_mean))
-            #     denominator = np.sum((first_scan_time - t_mean)**2)
+                numerator = np.sum((first_scan_time - t_mean) * (az_rad - theta_mean))
+                denominator = np.sum((first_scan_time - t_mean)**2)
                 
-            #     w_theta_ini = numerator / denominator
+                w_theta_ini = numerator / denominator
                 
-            #     numerator = np.sum((first_scan_time - t_mean) * (el_rad - phi_mean))
-            #     w_phi_ini = numerator / denominator
+                numerator = np.sum((first_scan_time - t_mean) * (el_rad - phi_mean))
+                w_phi_ini = numerator / denominator
                 
-            #     t_last = time.time()
-            #     tracking = True
+                t_last = time.time()
+                anomaly_found = True
 
-            #     #default time step
-            #     t_step = DT
+                #default time step
+                t_step = DT
 
-            #     # Clear LiDAR queue before starting
-            #     while not lidar_data_queue.empty():
-            #         try:
-            #             lidar_data_queue.get_nowait()
-            #         except queue.Empty:
-            #             break
-            #     while tracking:
-            #         azi_pred = az_rad + t_step*w_theta_ini  
-            #         tilt_pred = el_rad + t_step*w_phi_ini  
-            #         False, None, actual_az, actual_el, stepper_steps == perform_local_search(
-            #             pi, lidar_data_queue, calibration_data, azi_pred, tilt_pred, stepper_steps)
+                # Clear LiDAR queue before starting
+                while not lidar_data_queue.empty():
+                    try:
+                        lidar_data_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                while not anomaly_found:
+                    
+                    azi_pred = az_rad + t_step*w_theta_ini  
+                    tilt_pred = el_rad + t_step*w_phi_ini  
+                    
+                    anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_local_search(
+                        pi, lidar_data_queue, calibration_data, azi_pred, tilt_pred, stepper_steps)
+                    
+                #compute residuals (difference b/n measurement and prediction)
+                azi_residual = anomaly_measured[1] - azi_pred
+                tilt_residual = anomaly_measured[2] - tilt_pred
+
+                azi_filter = [azi_pred + ALPHA_THETA * azi_residual, 
+                              
+                              
+                              
+                              ] 
+
                 
-            #         return 
+                     
 
-            #     print("Tracking complete. Saving trajectory data...")
-            #     save_calibration_data(plot_data)
+                print("Tracking complete. Saving trajectory data...")
+                save_calibration_data(plot_data)
                 
                 
     except KeyboardInterrupt:
         print("\nProgram stopped by user.")
     finally:
         print("Cleaning up...")
-        pi.set_servo_pulsewidth(SERVO_PIN, 0)
+        pi.set_servo_pulsewidth(SERVO_PIN, 0)   
         reset_stepper_pos(stepper_steps)
         pi.stop()
         GPIO.cleanup()
