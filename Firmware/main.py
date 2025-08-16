@@ -60,6 +60,8 @@ def main():
     first_scan_timestamps = []
     plot_data = []
     locked_in = 0
+    anomaly_count = 0
+    anomaly_total = 0
 
     try:
         while True:
@@ -83,13 +85,19 @@ def main():
             elif current_state == "SCANNING":
                 print("Scanning area...")
                 
-                #Sweeping for points
-                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, should_change_state = perform_scanning_sequence(
-                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                    stepper_steps, anomaly_locations, anomaly_averaged_coords, 5
-                )
                 
+                #Sweeping for points
+                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
+                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 5
+                )
+
+                if calibration_done:
+                    current_state = states[2]
+
             elif current_state == "DETECTED":
+
+                anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
                 first_scan_positions = coords_array[:, :3]
                 first_scan_timestamps = coords_array[:, 3:]
@@ -99,10 +107,6 @@ def main():
                     initial_rad.append([dist, np.radians(az_deg), np.radians(el_deg)])
                 
                 print(anomaly_averaged_coords)
-                if should_change_state:
-                    anomaly_averaged_coords = []
-                    plot_data = first_scan_positions
-                    current_state = states[2]
 
                 print("Target detected! Starting EKF tracking...")
                 # Clear LiDAR queue before starting
@@ -119,7 +123,7 @@ def main():
                     current_time = first_scan_timestamps[-1] if len(first_scan_timestamps) > 0 else time.time()
                     future_time = current_time + 1
                     
-                    predicted_positions = kf.predict_future_positions([future_time])
+                    predicted_positions = kf.predict_future_positions(future_time)
                     predicted_position = predicted_positions[0]  # Get first (and only) prediction
                     
                     # Convert to degrees and move motors there
@@ -127,10 +131,14 @@ def main():
                     current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, pos_deg[1], pos_deg[2], stepper_steps)
                     
                     # Perform single detection scan
-                    current_azimuth, current_elevation, stepper_steps, new_anomaly_coords, should_change_state = perform_scanning_sequence(
+                    current_azimuth, current_elevation, stepper_steps, new_anomaly_coords, anomaly_count, should_change_state = perform_scanning_sequence(
                         pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                        stepper_steps, anomaly_locations, [], 0, 1  # Reset anomaly tracking for single detection
+                        stepper_steps, anomaly_locations, [], anomaly_count, 1  # Reset anomaly tracking for single detection
                     )
+
+                    if anomaly_count == 1:
+                        anomaly_total += 1
+                        anomaly_count = 0
                     
                     # Process new measurement if found
                     if new_anomaly_coords and len(new_anomaly_coords) > 0:
