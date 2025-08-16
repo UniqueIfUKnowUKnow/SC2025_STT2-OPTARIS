@@ -96,7 +96,6 @@ const SatelliteMarker = ({ satellite, position, color, name }) => {
         <sphereGeometry args={[0.2, 16, 16]} />
         <meshBasicMaterial color={color} />
       </mesh>
-      
       {/* Label showing the satellite name */}
       <Html
         position={[0, 0.4, 0]}
@@ -219,6 +218,8 @@ const GlobalView = ({
             name={satData.name}
           />
         ))}
+
+  {/* No demo satellites, restored to original version */}
       
       {/* Render orbit paths for satellites except ISS, Optaris, and equator (strict match) */}
       {Object.entries(satellites)
