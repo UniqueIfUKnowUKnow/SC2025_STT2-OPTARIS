@@ -76,7 +76,7 @@ def perform_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, curre
                 anomaly_averaged_coords.append([tuple(round(sum(col) / len(col), 2) for col in zip(*anomaly_locations))])
                 anomaly_locations.clear()  # Clear the list for next group    
                 anomaly_count += 1
-                if detections_required > 1:
+                if anomaly_count < detections_required:
                     current_azimuth, current_elevation, stepper_steps = move_to_polar_position(
                         pi, current_azimuth + SWEEP_RANGE, current_elevation, stepper_steps)
             
@@ -84,7 +84,7 @@ def perform_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, curre
             continue
         
         # Check if we should change state during the sweep
-        if anomaly_count >= INITIAL_SWEEP_DETECTIONS_COUNT:
+        if anomaly_count >= detections_required:
             return current_azimuth, stepper_steps, anomaly_count, True
     
     return current_azimuth, stepper_steps, anomaly_count, False
@@ -138,6 +138,7 @@ def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_az
     
     # Final check for state change
     if anomaly_count >= detections_required:
+        print(anomaly_count, detections_required)
         state_change = True
     
     return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, state_change
