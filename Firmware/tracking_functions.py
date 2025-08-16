@@ -1,192 +1,236 @@
-# =========================
-# Tracking from 5 Points Function
-# =========================
-from collections import deque
+# tracking_functions.py
+import time
+import queue
+from constants import *
+from anomaly_check import get_interpolated_reference_distance
 
-def make_ellipse_tracker(initial_points, prediction_step_angle=2.0):
+def detect_at_position(pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                      max_samples=50, detection_threshold_factor=ANOMALY_FACTOR):
     """
-    Create a tracker that, given 5 initial detected points, can track and predict the object's trajectory
-    as new points are added one by one.
+    Stay at current position and collect LiDAR samples to detect if target is present.
+    
     Args:
-        initial_points (list): List of 5 (angle, distance) tuples.
-        prediction_step_angle (float): Angle step for prediction (degrees).
+        pi: pigpio instance 
+        lidar_data_queue: Queue containing LiDAR readings
+        calibration_data: Reference calibration data for anomaly detection
+        current_azimuth: Current azimuth position in degrees
+        current_elevation: Current elevation position in degrees
+        max_samples: Maximum number of LiDAR samples to collect
+        detection_threshold_factor: Factor to determine if reading is anomalous
+        
     Returns:
-        function: tracker(new_point) -> (predicted_angle, predicted_distance)
+        tuple: (detection_found, average_distance, sample_count)
+            - detection_found: Boolean indicating if target was detected
+            - average_distance: Average distance of detected readings (or None)
+            - sample_count: Number of valid samples collected
     """
-    if len(initial_points) != 5:
-        raise ValueError("Exactly 5 initial points are required.")
-    buffer = deque(initial_points, maxlen=5)
-    def tracker(new_point):
-        buffer.append(new_point)
-        cartesian_points = np.array([
-            (dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle)))
-            for angle, dist in buffer
-        ])
-        ellipse = ConicSection.fit_from_points(cartesian_points)
-        if not ellipse.is_ellipse():
-            return None, None
-        last_angle = buffer[-1][0]
-        next_angle = last_angle + prediction_step_angle
-        predicted_distance = ellipse.predict_distance(next_angle)
-        if predicted_distance is None:
-            return None, None
-        return next_angle, predicted_distance
-    return tracker
-# =========================
-# Real-Time Tracking Function
-# =========================
-from collections import deque
-
-def track_object_realtime(data_stream, buffer_size=5, prediction_step_angle=2.0):
-    """
-    Continuously track and predict the object's position using a moving window of the last N points.
-    Args:
-        data_stream (iterable): An iterable or generator yielding (angle, distance) tuples in real time.
-        buffer_size (int): Number of recent points to use for fitting (default 5).
-        prediction_step_angle (float): Angle step for prediction (degrees).
-    Yields:
-        tuple: (predicted_angle, predicted_distance) for each new data point, or (None, None) if not enough data.
-    """
-    buffer = deque(maxlen=buffer_size)
-    for point in data_stream:
-        buffer.append(point)
-        if len(buffer) < buffer_size:
-            # Not enough points yet to fit
-            yield None, None
+    
+    print(f"Searching at position: Az={current_azimuth:.1f}°, El={current_elevation:.1f}°")
+    
+    # Clear any old readings from queue
+    while not lidar_data_queue.empty():
+        try:
+            lidar_data_queue.get_nowait()
+        except queue.Empty:
+            break
+    
+    # Get reference distance for this position
+    reference_distance = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
+    detection_threshold = reference_distance * detection_threshold_factor
+    
+    print(f"Reference distance: {reference_distance:.1f}cm, Detection threshold: {detection_threshold:.1f}cm")
+    
+    # Collect samples at this position
+    valid_readings = []
+    anomaly_readings = []
+    sample_count = 0
+    start_time = time.time()
+    max_wait_time = 2.0  # Maximum time to wait for samples (seconds)
+    
+    while sample_count < max_samples and (time.time() - start_time) < max_wait_time:
+        try:
+            # Get LiDAR reading with short timeout
+            distance = lidar_data_queue.get(timeout=0.1)
+            
+            if distance > 0 and distance < SENSOR_MAX:  # Valid reading
+                valid_readings.append(distance)
+                sample_count += 1
+                
+                # Check if this reading indicates target presence
+                if distance < detection_threshold:
+                    anomaly_readings.append(distance)
+                    print(f"  Sample {sample_count}: {distance:.1f}cm - ANOMALY DETECTED!")
+                else:
+                    print(f"  Sample {sample_count}: {distance:.1f}cm - normal")
+                
+                # Early detection: if we have enough anomaly readings, we can conclude
+                if len(anomaly_readings) >= 3:
+                    print(f"Target detected with {len(anomaly_readings)} anomalous readings!")
+                    avg_distance = sum(anomaly_readings) / len(anomaly_readings)
+                    return True, avg_distance, sample_count
+                    
+        except queue.Empty:
+            # No reading available, continue waiting
+            time.sleep(0.05)
             continue
-        # Fit and predict
-        cartesian_points = np.array([
-            (dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle)))
-            for angle, dist in buffer
-        ])
-        ellipse = ConicSection.fit_from_points(cartesian_points)
-        if not ellipse.is_ellipse():
-            yield None, None
+        except Exception as e:
+            print(f"Error reading LiDAR: {e}")
             continue
-        last_angle = buffer[-1][0]
-        next_angle = last_angle + prediction_step_angle
-        predicted_distance = ellipse.predict_distance(next_angle)
-        if predicted_distance is None:
-            yield None, None
-        else:
-            yield next_angle, predicted_distance
+    
+    # Analysis of collected samples
+    if not valid_readings:
+        print("No valid LiDAR readings collected")
+        return False, None, 0
+    
+    # Determine if target is present based on anomaly ratio
+    anomaly_ratio = len(anomaly_readings) / len(valid_readings) if valid_readings else 0
+    detection_found = anomaly_ratio >= 0.3  # Need at least 30% anomalous readings
+    
+    if detection_found:
+        avg_distance = sum(anomaly_readings) / len(anomaly_readings)
+        print(f"Target detected! {len(anomaly_readings)}/{len(valid_readings)} readings were anomalous")
+        print(f"Average target distance: {avg_distance:.1f}cm")
+        return True, avg_distance, sample_count
+    else:
+        print(f"No target detected. {len(anomaly_readings)}/{len(valid_readings)} readings were anomalous (need ≥30%)")
+        return False, None, sample_count
 
-import numpy as np
-import math
 
-# =========================
-# ConicSection Class
-# =========================
-class ConicSection:
+def perform_local_search(pi, lidar_data_queue, calibration_data, center_azimuth, center_elevation, 
+                        stepper_steps, search_radius_deg=5.0):
     """
-    Represents a general conic section (ellipse, parabola, hyperbola, etc.)
-    and provides methods for fitting a conic to points and predicting values.
-    """
-    def __init__(self, coeffs):
-        """
-        Initialize the conic section with coefficients [A, B, C, D, E, F] for the general conic equation:
-            Ax^2 + Bxy + Cy^2 + Dx + Ey + F = 0
-        Args:
-            coeffs (array-like): List or array of 6 coefficients.
-        """
-        self.coeffs = coeffs
-
-    @staticmethod
-    def fit_from_points(points):
-        """
-        Fit a conic section (ideally an ellipse) to a set of points using least squares.
-        Uses the design matrix method and SVD to solve for the best-fit coefficients.
-        Args:
-            points (np.ndarray): Nx2 array of (x, y) points.
-        Returns:
-            ConicSection: Fitted conic section object.
-        """
-        x = points[:, 0]
-        y = points[:, 1]
-        # Build the design matrix for the conic equation
-        # Each row: [x^2, xy, y^2, x, y, 1]
-        D = np.vstack([x**2, x*y, y**2, x, y, np.ones(len(x))]).T
-        # Use SVD to solve D @ coeffs = 0 (least squares solution)
-        U, S, V = np.linalg.svd(D, full_matrices=False)
-        coeffs = V[-1, :]  # The solution is the last row of V
-        return ConicSection(coeffs)
-
-    def is_ellipse(self):
-        """
-        Check if the fitted conic is an ellipse using the discriminant:
-            B^2 - 4AC < 0  => ellipse
-        Returns:
-            bool: True if the conic is an ellipse, False otherwise.
-        """
-        A, B, C = self.coeffs[0], self.coeffs[1], self.coeffs[2]
-        return (B**2 - 4*A*C) < 0
-
-    def predict_distance(self, angle_deg):
-        """
-        Predict the distance (radius) at a given angle (in degrees) for the ellipse.
-        This is done by substituting x = r*cos(a), y = r*sin(a) into the conic equation
-        and solving for r (distance) at the given angle.
-        Args:
-            angle_deg (float): Angle in degrees.
-        Returns:
-            float or None: Predicted distance, or None if no real solution exists.
-        """
-        angle_rad = math.radians(angle_deg)
-        cos_a = math.cos(angle_rad)
-        sin_a = math.sin(angle_rad)
-        A, B, C, D, E, F = self.coeffs
-        # Substitute x = r*cos(a), y = r*sin(a) into the conic equation
-        # The equation becomes: a*r^2 + b*r + c = 0
-        a = A*cos_a**2 + B*cos_a*sin_a + C*sin_a**2
-        b = D*cos_a + E*sin_a
-        c = F
-        discriminant = b**2 - 4*a*c
-        # If discriminant is negative or a is too small, no real solution
-        if discriminant < 0 or abs(a) < 1e-8:
-            return None
-        # Use the positive root (forward direction)
-        r = (-b + math.sqrt(discriminant)) / (2*a)
-        return r
-
-# =========================
-# Trajectory Prediction Function
-# =========================
-def predict_ellipse_trajectory(detected_points_polar):
-    """
-    Predicts the next point on a trajectory by fitting an ellipse to five detected points.
-    Steps:
-      1. Convert polar coordinates (angle, distance) to Cartesian (x, y).
-      2. Fit an ellipse to the points using least squares.
-      3. Predict the next point by evaluating the ellipse at the next angle.
+    Perform a small local search around the predicted position to account for prediction errors.
+    
     Args:
-        detected_points_polar (list): A list of 5 tuples, each containing (angle, distance).
-                                      Angle is in degrees, distance is in cm.
+        pi: pigpio instance
+        lidar_data_queue: Queue containing LiDAR readings  
+        calibration_data: Reference calibration data
+        center_azimuth: Center azimuth position for search
+        center_elevation: Center elevation position for search
+        stepper_steps: Current stepper step count
+        search_radius_deg: Radius in degrees to search around center position
+        
     Returns:
-        tuple: (predicted_angle, predicted_distance) for the next point, or (None, None) if failed.
+        tuple: (detection_found, best_measurement, final_azimuth, final_elevation, final_stepper_steps)
     """
-    if len(detected_points_polar) < 5:
-        print("Error: At least 5 points are required to fit an ellipse.")
-        return None, None
+    
+    print(f"Performing local search around Az={center_azimuth:.1f}°, El={center_elevation:.1f}°")
+    print(f"Search radius: ±{search_radius_deg:.1f}°")
+    
+    from move_motors import move_to_polar_position
+    
+    # Define search pattern (spiral outward from center)
+    search_positions = [
+        (0, 0),  # Center position first
+        (-search_radius_deg, 0), (search_radius_deg, 0),  # Left/right
+        (0, -search_radius_deg), (0, search_radius_deg),  # Down/up  
+        (-search_radius_deg, -search_radius_deg), (search_radius_deg, search_radius_deg),  # Diagonals
+        (search_radius_deg, -search_radius_deg), (-search_radius_deg, search_radius_deg)
+    ]
+    
+    best_detection = None
+    best_measurement = None
+    
+    for i, (az_offset, el_offset) in enumerate(search_positions):
+        search_azimuth = center_azimuth + az_offset
+        search_elevation = center_elevation + el_offset
+        
+        # Clamp elevation to servo limits
+        search_elevation = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, search_elevation))
+        
+        print(f"\nSearch position {i+1}/{len(search_positions)}: Az={search_azimuth:.1f}°, El={search_elevation:.1f}°")
+        
+        # Move to search position
+        actual_az, actual_el, stepper_steps = move_to_polar_position(pi, search_azimuth, search_elevation, stepper_steps)
+        
+        # Wait for motors to settle
+        time.sleep(0.3)
+        
+        # Search for target at this position
+        detection_found, avg_distance, sample_count = detect_at_position(
+            pi, lidar_data_queue, calibration_data, actual_az, actual_el
+        )
+        
+        if detection_found:
+            measurement = [avg_distance, actual_az, actual_el, time.time()]
+            
+            # Use first detection found, or keep the one with shortest distance (closest target)
+            if best_detection is None or avg_distance < best_measurement[0]:
+                best_detection = True
+                best_measurement = measurement
+                print(f"*** BEST DETECTION SO FAR: {avg_distance:.1f}cm at ({actual_az:.1f}°, {actual_el:.1f}°) ***")
+            
+            # For efficiency, you could break here if you only want the first detection
+            # break
+    
+    # Return to center position if no detection found
+    if best_detection is None:
+        print("No target found in local search, returning to center position")
+        actual_az, actual_el, stepper_steps = move_to_polar_position(pi, center_azimuth, center_elevation, stepper_steps)
+        return False, None, actual_az, actual_el, stepper_steps
+    else:
+        # Move to best detection position
+        best_az, best_el = best_measurement[1], best_measurement[2]
+        actual_az, actual_el, stepper_steps = move_to_polar_position(pi, best_az, best_el, stepper_steps)
+        print(f"Moving to best detection position: Az={best_az:.1f}°, El={best_el:.1f}°")
+        return True, best_measurement, actual_az, actual_el, stepper_steps
 
-    # Step 1: Convert polar coordinates to Cartesian coordinates
-    # x = r*cos(angle), y = r*sin(angle)
-    cartesian_points = np.array([
-        (dist * math.cos(math.radians(angle)), dist * math.sin(math.radians(angle)))
-        for angle, dist in detected_points_polar
-    ])
 
-    # Step 2: Fit an ellipse to the Cartesian points
-    ellipse = ConicSection.fit_from_points(cartesian_points)
-    if not ellipse.is_ellipse():
-        print("Warning: The fitted conic is not an ellipse.")
-        return None, None
-
-    # Step 3: Predict the next point along the trajectory
-    last_angle = detected_points_polar[-1][0]
-    PREDICTION_STEP_ANGLE = 2.0  # degrees to step forward
-    next_angle = last_angle + PREDICTION_STEP_ANGLE
-    predicted_distance = ellipse.predict_distance(next_angle)
-    if predicted_distance is None:
-        print("Prediction failed: No real solution for the next point.")
-        return None, None
-    return next_angle, predicted_distance
+# Modified tracking function for main.py
+def perform_tracking_detection(pi, lidar_data_queue, calibration_data, predicted_azimuth, predicted_elevation, stepper_steps):
+    """
+    Perform target detection at predicted location for Kalman tracking.
+    This replaces the scanning sequence during tracking phase.
+    
+    Args:
+        pi: pigpio instance
+        lidar_data_queue: Queue containing LiDAR readings
+        calibration_data: Reference calibration data
+        predicted_azimuth: Predicted azimuth from Kalman filter
+        predicted_elevation: Predicted elevation from Kalman filter  
+        stepper_steps: Current stepper step count
+        
+    Returns:
+        tuple: (new_measurement, final_azimuth, final_elevation, final_stepper_steps)
+            - new_measurement: [distance, azimuth, elevation, timestamp] if found, None otherwise
+            - final_azimuth: Final azimuth position
+            - final_elevation: Final elevation position
+            - final_stepper_steps: Final stepper step count
+    """
+    
+    from move_motors import move_to_polar_position
+    
+    print(f"=== TRACKING DETECTION ===")
+    print(f"Moving to predicted position: Az={predicted_azimuth:.1f}°, El={predicted_elevation:.1f}°")
+    
+    # Move to predicted position
+    actual_azimuth, actual_elevation, stepper_steps = move_to_polar_position(
+        pi, predicted_azimuth, predicted_elevation, stepper_steps
+    )
+    
+    # Wait for motors to settle
+    time.sleep(0.5)
+    
+    # Try detection at exact predicted position first
+    detection_found, avg_distance, sample_count = detect_at_position(
+        pi, lidar_data_queue, calibration_data, actual_azimuth, actual_elevation
+    )
+    
+    if detection_found:
+        print(f"Target found at predicted position!")
+        measurement = [avg_distance, actual_azimuth, actual_elevation, time.time()]
+        return measurement, actual_azimuth, actual_elevation, stepper_steps
+    
+    # If not found at exact position, perform local search
+    print("Target not found at exact predicted position, performing local search...")
+    
+    detection_found, best_measurement, final_az, final_el, stepper_steps = perform_local_search(
+        pi, lidar_data_queue, calibration_data, actual_azimuth, actual_elevation, stepper_steps
+    )
+    
+    if detection_found:
+        print(f"Target found during local search!")
+        return best_measurement, final_az, final_el, stepper_steps
+    else:
+        print("Target not found in local search area")
+        return None, final_az, final_el, stepper_steps
