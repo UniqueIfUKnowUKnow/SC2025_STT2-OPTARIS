@@ -88,10 +88,10 @@ def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth
     
     # --- ELEVATION CONTROL (SERVO) ---
     # Check if elevation is within servo limits and clamp if necessary
-    if target_elevation < SERVO_SWEEP_START or target_elevation > SERVO_SWEEP_END:
+    if target_elevation < 0 or target_elevation > 180:
         print(f"Warning: Target elevation {target_elevation:.1f}° is outside servo range "
-              f"({SERVO_SWEEP_START}°-{SERVO_SWEEP_END}°)")
-        target_elevation = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, target_elevation))
+              f"({0}°-{180}°)")
+        target_elevation = max(0, min(180, target_elevation))
         print(f"Clamped elevation to: {target_elevation:.1f}°")
     
     # Move servo to target elevation

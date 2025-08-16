@@ -97,7 +97,7 @@ def detect_at_position(pi, lidar_data_queue, calibration_data, current_azimuth, 
 
 
 def perform_local_search(pi, lidar_data_queue, calibration_data, center_azimuth, center_elevation, 
-                        stepper_steps, search_radius_deg=2.0):
+                        stepper_steps, search_radius_deg=5.0):
     """
     Perform a small local search around the predicted position to account for prediction errors.
     

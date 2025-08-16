@@ -8,7 +8,7 @@
         {
             "type": "chrome",
             "request": "launch",
-            "name": "Launch Chrome against localhost",
+            "name": "SC2025_STT2-OPTARIS",
             "url": "ws://10.111.244.104:8765",
             "webRoot": "${workspaceFolder}"
         }
