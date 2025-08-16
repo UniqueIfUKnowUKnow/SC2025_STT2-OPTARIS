@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import CollapsiblePanel from './CollapsiblePanel';
 import './SystemHUD.css';
 
 // SystemHUD Component - This is the main interface overlay that shows all the control panels and information
@@ -187,125 +188,36 @@ const SystemHUD = ({
             )}
           </div>
 
-          {/* Target Data Panel - Shows current position and sensor readings */}
-          <div className="hud-panel hud-data">
-            <h3>Target Data</h3>
-            
-            {/* Current target position in 3D coordinates */}
-            <div className="data-item">
-              <span>Current Position:</span>
-              <span className="data-value">
-                {measuredPosition 
-                  ? `${formatValue(measuredPosition[0], ' km')}, ${formatValue(measuredPosition[1], ' km')}, ${formatValue(measuredPosition[2], ' km')}`
-                  : 'N/A'
-                }
-              </span>
-            </div>
-            
-            {/* Distance to the target */}
-            <div className="data-item">
-              <span>Distance:</span>
-              <span className="data-value">
-                {formatValue(liveTelemetry?.distance, ' m')}
-              </span>
-            </div>
-            
-            {/* Signal strength from the LiDAR sensor */}
-            <div className="data-item">
-              <span>Signal Strength:</span>
-              <span className="data-value">
-                {formatValue(liveTelemetry?.signal_strength, ' %')}
-              </span>
-            </div>
-          </div>
+          {/* Target Data Panel - Collapsible (right sidebar only, not in-canvas) */}
+          {/* (No in-canvas overlays for telemetry or legend) */}
         </div>
 
         {/* RIGHT SIDE PANELS - These are positioned on the right side of the screen */}
         <div className="right-panels">
-          
-          {/* Orbital Parameters Panel - Shows calculated orbital elements */}
-          <div className="hud-panel hud-orbit">
-            <h3>Orbital Parameters</h3>
-            
-            {/* Semi-Major Axis - the "size" of the orbit */}
-            <div className="orbit-item">
-              <span>Semi-Major Axis (a):</span>
-              <span className="orbit-value">
-                {formatValue(elements.semiMajorAxis, ' km')}
-              </span>
-            </div>
-            
-            {/* Eccentricity - how "oval" the orbit is (0 = perfect circle, 1 = very elongated) */}
-            <div className="orbit-item">
-              <span>Eccentricity (e):</span>
-              <span className="orbit-value">
-                {formatValue(elements.eccentricity, '', 4)}
-              </span>
-            </div>
-            
-            {/* Inclination - how tilted the orbit is relative to Earth's equator */}
-            <div className="orbit-item">
-              <span>Inclination (i):</span>
-              <span className="orbit-value">
-                {formatValue(elements.inclinationDeg, '°')}
-              </span>
-            </div>
-            
-            {/* RAAN (Right Ascension of Ascending Node) - where the orbit crosses the equator going up */}
-            <div className="orbit-item">
-              <span>RAAN (Ω):</span>
-              <span className="orbit-value">
-                {formatValue(elements.raanDeg, '°')}
-              </span>
-            </div>
-            
-            {/* Argument of Periapsis - where the closest point to Earth is in the orbit */}
-            <div className="orbit-item">
-              <span>Arg. of Periapsis (ω):</span>
-              <span className="orbit-value">
-                {formatValue(elements.argPeriapsisDeg, '°')}
-              </span>
-            </div>
-            
-            {/* True Anomaly - current position in the orbit */}
-            <div className="orbit-item">
-              <span>True Anomaly (ν):</span>
-              <span className="orbit-value">
-                {formatValue(elements.trueAnomalyDeg, '°')}
-              </span>
-            </div>
-          </div>
-
-          {/* Visual Legend Panel - Explains what the different colors and symbols mean */}
-          {/* The content changes automatically based on which view the user is looking at */}
-          <div className="hud-panel hud-legend">
-            <h3>Visual Legend</h3>
-            
-            {/* Legend for Global View (Earth and satellites) */}
-            {currentView === 'global' ? (
-              <>
-                <div className="legend-item">
-                  <span style={{ color: '#ff4444' }}>■</span> Sofia Tech Park (Ground Station)
+          {/* Only show in local view */}
+          {currentView === 'local' && (
+            <>
+              {/* Live Telemetry Panel - Collapsible */}
+              <CollapsiblePanel title="Live Telemetry">
+                <div className="telemetry-item">
+                  <span>Azimuth:</span>
+                  <span className="telemetry-value">{formatValue(liveTelemetry?.azimuth, '°')}</span>
                 </div>
-                <div className="legend-item">
-                  <span style={{ color: '#ff6b35' }}>■</span> Optaris Satellite
+                <div className="telemetry-item">
+                  <span>Elevation:</span>
+                  <span className="telemetry-value">{formatValue(liveTelemetry?.elevation, '°')}</span>
                 </div>
-                <div className="legend-item">
-                  <span style={{ color: '#00ff88' }}>■</span> ISS Satellite
+                <div className="telemetry-item">
+                  <span>Distance:</span>
+                  <span className="telemetry-value">{formatValue(liveTelemetry?.distance, ' m')}</span>
                 </div>
-                <div className="legend-item">
-                  <span style={{ color: '#4e9cff' }}>●</span> Measured Position (LiDAR)
+                <div className="telemetry-item">
+                  <span>Signal Strength:</span>
+                  <span className="telemetry-value">{formatValue(liveTelemetry?.signal_strength, ' %')}</span>
                 </div>
-                <div className="legend-item">
-                  <span style={{ color: '#ff6b35' }}>─</span> Predicted Orbit (Optaris)
-                </div>
-                <div className="legend-item">
-                  <span style={{ color: '#00ff88' }}>─</span> ISS Orbit Path
-                </div>
-              </>
-            ) : (
-              // Legend for Local View (LiDAR tracker)
-              <>
+              </CollapsiblePanel>
+              {/* Visual Legend Panel - Collapsible */}
+              <CollapsiblePanel title="Visual Legend">
                 <div className="legend-item">
                   <span style={{ color: 'red' }}>■</span> LiDAR Sensor
                 </div>
@@ -324,9 +236,9 @@ const SystemHUD = ({
                 <div className="legend-item">
                   <span style={{ color: 'cyan' }}>○</span> 12m Range Sphere
                 </div>
-              </>
-            )}
-          </div>
+              </CollapsiblePanel>
+            </>
+          )}
         </div>
       </div>
 

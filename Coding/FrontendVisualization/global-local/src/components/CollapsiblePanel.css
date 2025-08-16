@@ -1,0 +1,25 @@
+.collapsible-panel {
+  background: none;
+  border: none;
+  margin-bottom: 10px;
+}
+.collapsible-header {
+  background: rgba(0,0,0,0.15);
+  color: #00ff88;
+  font-size: 1.05rem;
+  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0,255,136,0.15);
+  margin-bottom: 4px;
+  transition: background 0.2s;
+}
+.collapsible-header:hover {
+  background: rgba(0,255,136,0.08);
+}
+.collapsible-content {
+  background: rgba(0,0,0,0.5);
+  border-radius: 8px;
+  padding: 12px 10px 8px 10px;
+  margin-bottom: 4px;
+  border: 1px solid rgba(0,255,136,0.08);
+}

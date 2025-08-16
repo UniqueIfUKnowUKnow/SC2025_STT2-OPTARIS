@@ -202,42 +202,49 @@ const GlobalView = ({
         <RealisticEarth />
       </ErrorBoundary>
       
-      {/* Ground station marker at Sofia Tech Park */}
-      <GroundStationMarker onClick={onGroundStationClick} />
+  {/* Ground station marker removed as per request */}
       
-      {/* Render each satellite */}
-      {Object.entries(satellites).map(([id, satData]) => (
-        <SatelliteMarker
-          key={id}
-          satellite={satData}
-          position={satData.position}
-          color={satData.color}
-          name={satData.name}
-        />
-      ))}
+      {/* Render each satellite except ISS and Optaris (strict match) */}
+      {Object.entries(satellites)
+        .filter(([id, satData]) => {
+          const name = (satData.name || '').trim().toLowerCase();
+          return name !== 'international space station' && name !== 'iss' && name !== 'optaris';
+        })
+        .map(([id, satData]) => (
+          <SatelliteMarker
+            key={id}
+            satellite={satData}
+            position={satData.position}
+            color={satData.color}
+            name={satData.name}
+          />
+        ))}
       
-      {/* Render orbit paths for satellites */}
-      {Object.entries(satellites).map(([id, satData]) => {
-        // Only show orbits for satellites that have TLE data
-        if (!satData.rec) return null;
-        
-        return (
-          <ErrorBoundary key={`orbit-${id}`}>
-            <OrbitPath
-              orbitParams={{
-                elements: {
-                  semiMajorAxis: 7000, // Approximate orbit size in km
-                  eccentricity: 0.001,  // Nearly circular orbit
-                  inclinationRad: 0.9,  // Orbit tilt in radians
-                  // Add other orbital elements as needed
-                }
-              }}
-              color={satData.color}
-              segments={150}
-            />
-          </ErrorBoundary>
-        );
-      })}
+      {/* Render orbit paths for satellites except ISS, Optaris, and equator (strict match) */}
+      {Object.entries(satellites)
+        .filter(([id, satData]) => {
+          const name = (satData.name || '').trim().toLowerCase();
+          return name !== 'international space station' && name !== 'iss' && name !== 'optaris' && !name.includes('equator');
+        })
+        .map(([id, satData]) => {
+          if (!satData.rec) return null;
+          return (
+            <ErrorBoundary key={`orbit-${id}`}>
+              <OrbitPath
+                orbitParams={{
+                  elements: {
+                    semiMajorAxis: 7000, // Approximate orbit size in km
+                    eccentricity: 0.001,  // Nearly circular orbit
+                    inclinationRad: 0.9,  // Orbit tilt in radians
+                    // Add other orbital elements as needed
+                  }
+                }}
+                color={satData.color}
+                segments={150}
+              />
+            </ErrorBoundary>
+          );
+        })}
       
       {/* Predicted orbit from LiDAR measurements */}
       <ErrorBoundary>
