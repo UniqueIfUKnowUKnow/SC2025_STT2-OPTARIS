@@ -150,13 +150,18 @@ class DroneTrajectoryKalman:
         Predict positions at future timestamps.
         
         Args:
-            future_times: List of future timestamps
+            future_times: List of future timestamps or single timestamp
             
         Returns:
             List of predicted [distance, azimuth, elevation] measurements
         """
-        if not self.timestamps:
+        # Check if timestamps exist - fix for numpy array issue
+        if len(self.timestamps) == 0:
             raise ValueError("No measurements available. Initialize first.")
+        
+        # Handle single timestamp input
+        if not isinstance(future_times, (list, tuple, np.ndarray)):
+            future_times = [future_times]
         
         predictions = []
         current_time = self.timestamps[-1]
@@ -168,7 +173,7 @@ class DroneTrajectoryKalman:
         for future_time in future_times:
             dt = future_time - current_time
             if dt <= 0:
-                raise ValueError("Future time must be after current time")
+                raise ValueError(f"Future time {future_time} must be after current time {current_time}")
             
             # Predict forward
             predicted_state = self.predict(dt)
@@ -259,6 +264,12 @@ class DroneTrajectoryKalman:
             measurements: List of [distance, azimuth, elevation] measurements
             timestamps: Corresponding timestamps
         """
+        # Convert to lists if they're numpy arrays
+        if isinstance(measurements, np.ndarray):
+            measurements = measurements.tolist()
+        if isinstance(timestamps, np.ndarray):
+            timestamps = timestamps.tolist()
+        
         if len(measurements) != len(timestamps):
             raise ValueError("Measurements and timestamps must have same length")
         

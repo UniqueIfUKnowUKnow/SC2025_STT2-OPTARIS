@@ -123,7 +123,7 @@ def main():
                     current_time = first_scan_timestamps[-1] if len(first_scan_timestamps) > 0 else time.time()
                     future_time = current_time + 1
                     
-                    predicted_positions = kf.predict_future_positions(future_time)
+                    predicted_positions = kf.predict_future_positions([future_time])
                     predicted_position = predicted_positions[0]  # Get first (and only) prediction
                     
                     # Convert to degrees and move motors there
