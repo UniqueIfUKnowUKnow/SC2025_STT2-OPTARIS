@@ -61,10 +61,7 @@ class DroneTrajectoryKalman:
     def initialize_from_measurements(self, measurements, timestamps):
         """
         Initialize the filter state from initial measurements.
-        
-        Args:
-            measurements: List of [distance, azimuth, elevation] in [m, rad, rad]
-            timestamps: List of timestamps corresponding to measurements
+        FIXED: Don't normalize angles during initialization to preserve velocity calculation.
         """
         if len(measurements) < 2:
             raise ValueError("Need at least 2 measurements to initialize velocities")
@@ -72,42 +69,49 @@ class DroneTrajectoryKalman:
         self.measurements = measurements.copy()
         self.timestamps = timestamps.copy()
         
-        # Initialize position from first measurement
+        # Initialize position from first measurement - NO NORMALIZATION
         self.x[0] = measurements[0][0]  # distance
-        self.x[1] = measurements[0][1]  # azimuth
-        self.x[2] = measurements[0][2]  # elevation
+        self.x[1] = measurements[0][1]  # azimuth (keep as-is, don't normalize)
+        self.x[2] = measurements[0][2]  # elevation (keep as-is, don't normalize)
         
         # Estimate initial velocities from first two measurements
         dt = timestamps[1] - timestamps[0]
         if dt > 0:
             self.x[3] = (measurements[1][0] - measurements[0][0]) / dt  # distance velocity
-            self.x[4] = self.angle_difference(measurements[1][1], measurements[0][1]) / dt  # azimuth velocity
-            self.x[5] = self.angle_difference(measurements[1][2], measurements[0][2]) / dt  # elevation velocity
+            
+            # FIXED: Simple difference for angles, no wrapping during initialization
+            self.x[4] = (measurements[1][1] - measurements[0][1]) / dt  # azimuth velocity
+            self.x[5] = (measurements[1][2] - measurements[0][2]) / dt  # elevation velocity
         
         # Reduce initial uncertainty for positions we've measured
         self.P[0, 0] = self.R[0, 0]  # distance uncertainty
         self.P[1, 1] = self.R[1, 1]  # azimuth uncertainty
         self.P[2, 2] = self.R[2, 2]  # elevation uncertainty
-    
-    def angle_difference(self, angle1, angle2):
-        """Calculate the shortest angular difference between two angles"""
-        diff = angle1 - angle2
-        while diff > np.pi:
-            diff -= 2 * np.pi
-        while diff < -np.pi:
-            diff += 2 * np.pi
-        return diff
+        def angle_difference(self, angle1, angle2):
+            """Calculate the shortest angular difference between two angles"""
+            diff = angle1 - angle2
+            while diff > np.pi:
+                diff -= 2 * np.pi
+            while diff < -np.pi:
+                diff += 2 * np.pi
+            return diff
     
     def predict(self, dt):
-        """Predict next state after time dt"""
+        """
+        Predict next state after time dt
+        FIXED: Only normalize angles if they become extremely large
+        """
         F = self.state_transition_matrix(dt)
         
         # Predict state
         self.x = F @ self.x
         
-        # Normalize angles to [-pi, pi]
-        self.x[1] = np.arctan2(np.sin(self.x[1]), np.cos(self.x[1]))
-        self.x[2] = np.arctan2(np.sin(self.x[2]), np.cos(self.x[2]))
+        # FIXED: Only normalize if angles become very large (> 4π), to prevent accumulation
+        # but avoid the premature normalization that was breaking velocity estimates
+        if abs(self.x[1]) > 4 * np.pi:
+            self.x[1] = np.arctan2(np.sin(self.x[1]), np.cos(self.x[1]))
+        if abs(self.x[2]) > 4 * np.pi:
+            self.x[2] = np.arctan2(np.sin(self.x[2]), np.cos(self.x[2]))
         
         # Predict covariance
         self.P = F @ self.P @ F.T + self.Q
@@ -115,16 +119,22 @@ class DroneTrajectoryKalman:
         return self.x.copy()
     
     def update(self, measurement):
-        """Update state with new measurement [distance, azimuth, elevation]"""
+        """
+        Update state with new measurement [distance, azimuth, elevation]
+        FIXED: Better angle difference handling
+        """
         z = np.array(measurement)
         H = self.measurement_matrix()
         
         # Innovation
         y = z - H @ self.x
         
-        # Handle angle wrapping for azimuth and elevation
-        y[1] = self.angle_difference(z[1], self.x[1])
-        y[2] = self.angle_difference(z[2], self.x[2])
+        # FIXED: Use smarter angle difference that doesn't always normalize
+        # Only use angle_difference if the raw difference is > π
+        if abs(y[1]) > np.pi:
+            y[1] = self.angle_difference(z[1], self.x[1])
+        if abs(y[2]) > np.pi:
+            y[2] = self.angle_difference(z[2], self.x[2])
         
         # Innovation covariance
         S = H @ self.P @ H.T + self.R
@@ -135,9 +145,11 @@ class DroneTrajectoryKalman:
         # Update state
         self.x = self.x + K @ y
         
-        # Normalize angles
-        self.x[1] = np.arctan2(np.sin(self.x[1]), np.cos(self.x[1]))
-        self.x[2] = np.arctan2(np.sin(self.x[2]), np.cos(self.x[2]))
+        # FIXED: Only normalize if angles become very large
+        if abs(self.x[1]) > 4 * np.pi:
+            self.x[1] = np.arctan2(np.sin(self.x[1]), np.cos(self.x[1]))
+        if abs(self.x[2]) > 4 * np.pi:
+            self.x[2] = np.arctan2(np.sin(self.x[2]), np.cos(self.x[2]))
         
         # Update covariance
         I = np.eye(self.state_dim)
@@ -145,6 +157,18 @@ class DroneTrajectoryKalman:
         
         return self.x.copy()
     
+    def convert_measurement_to_radians(self, measurement_deg):
+        """
+        Convert a measurement from [distance_m, azimuth_deg, elevation_deg] to radians
+        """
+        return [measurement_deg[0], np.radians(measurement_deg[1]), np.radians(measurement_deg[2])]
+
+    def convert_prediction_to_degrees(self, prediction_rad):
+        """
+        Convert a prediction from [distance_m, azimuth_rad, elevation_rad] to degrees
+        """
+        return [prediction_rad[0], np.degrees(prediction_rad[1]), np.degrees(prediction_rad[2])]
+
     def predict_future_positions(self, future_times):
         """
         Predict positions at future timestamps.
@@ -346,6 +370,17 @@ class DroneTrajectoryKalman:
         ax.set_title('Drone Trajectory Tracking')
         plt.show()
 
+    def debug_velocities(self):
+        """Debug method to see current velocities"""
+        print(f"Current Kalman velocities:")
+        print(f"  Distance: {self.x[3]:.2f} m/s")
+        print(f"  Azimuth: {np.degrees(self.x[4]):.1f} °/s")
+        print(f"  Elevation: {np.degrees(self.x[5]):.1f} °/s")
+        print(f"Current position:")
+        print(f"  Distance: {self.x[0]:.1f} m")
+        print(f"  Azimuth: {np.degrees(self.x[1]):.1f} °")
+        print(f"  Elevation: {np.degrees(self.x[2]):.1f} °")
+
 
 def example_usage():
     """Example of how to use the DroneTrajectoryKalman class"""
@@ -511,6 +546,88 @@ def real_time_tracking_example():
         print(f"Updated position uncertainty: ±{np.degrees(uncertainty[1]):.1f}° az, ±{np.degrees(uncertainty[2]):.1f}° el")
     
     return kf
+
+def initialize_with_better_estimates(self, measurements, timestamps, min_time_span=3.0):
+    """
+    Improved initialization that handles edge cases and validates data quality.
+    
+    Args:
+        measurements: List of [distance, azimuth, elevation] in [m, deg, deg]
+        timestamps: List of timestamps
+        min_time_span: Minimum time span required for good velocity estimation
+    """
+    if len(measurements) < 2:
+        raise ValueError("Need at least 2 measurements to initialize")
+    
+    # Convert to radians for internal processing
+    measurements_rad = []
+    for dist, az_deg, el_deg in measurements:
+        measurements_rad.append([dist, np.radians(az_deg), np.radians(el_deg)])
+    
+    # Check data quality
+    time_span = timestamps[-1] - timestamps[0]
+    if time_span < min_time_span:
+        print(f"Warning: Short time span ({time_span:.1f}s < {min_time_span}s) may lead to poor velocity estimates")
+    
+    # Sort by timestamp to ensure proper order
+    sorted_data = sorted(zip(timestamps, measurements_rad))
+    timestamps = [item[0] for item in sorted_data]
+    measurements_rad = [item[1] for item in sorted_data]
+    
+    self.measurements = measurements_rad.copy()
+    self.timestamps = timestamps.copy()
+    
+    # Initialize position from first measurement
+    self.x[0] = measurements_rad[0][0]  # distance
+    self.x[1] = measurements_rad[0][1]  # azimuth
+    self.x[2] = measurements_rad[0][2]  # elevation
+    
+    # Estimate velocities using linear regression over all points (more robust than just first two)
+    if len(measurements_rad) >= 3 and time_span > 1.0:
+        # Use least squares to estimate velocities
+        dt_array = np.array(timestamps) - timestamps[0]
+        
+        # Distance velocity
+        distances = [m[0] for m in measurements_rad]
+        dist_coeffs = np.polyfit(dt_array, distances, 1)
+        self.x[3] = dist_coeffs[0]  # slope = velocity
+        
+        # Azimuth velocity (handle angle wrapping)
+        azimuths = [m[1] for m in measurements_rad]
+        unwrapped_az = np.unwrap(azimuths)  # Handle 2π wrapping
+        az_coeffs = np.polyfit(dt_array, unwrapped_az, 1)
+        self.x[4] = az_coeffs[0]
+        
+        # Elevation velocity
+        elevations = [m[2] for m in measurements_rad]
+        el_coeffs = np.polyfit(dt_array, elevations, 1)
+        self.x[5] = el_coeffs[0]
+        
+    else:
+        # Fallback to simple two-point estimation
+        dt = timestamps[1] - timestamps[0]
+        if dt > 0:
+            self.x[3] = (measurements_rad[1][0] - measurements_rad[0][0]) / dt
+            self.x[4] = self.angle_difference(measurements_rad[1][1], measurements_rad[0][1]) / dt
+            self.x[5] = self.angle_difference(measurements_rad[1][2], measurements_rad[0][2]) / dt
+        else:
+            # Zero velocity if no time difference
+            self.x[3] = self.x[4] = self.x[5] = 0.0
+    
+    # Set reasonable initial uncertainties
+    self.P[0, 0] = self.R[0, 0]  # distance uncertainty
+    self.P[1, 1] = self.R[1, 1]  # azimuth uncertainty  
+    self.P[2, 2] = self.R[2, 2]  # elevation uncertainty
+    
+    # Higher uncertainty for velocities if data quality is poor
+    vel_uncertainty_factor = max(1.0, min_time_span / time_span) if time_span > 0 else 10.0
+    self.P[3, 3] = 1.0 * vel_uncertainty_factor   # distance velocity uncertainty
+    self.P[4, 4] = 0.1 * vel_uncertainty_factor   # azimuth velocity uncertainty
+    self.P[5, 5] = 0.1 * vel_uncertainty_factor   # elevation velocity uncertainty
+    
+    print(f"Kalman filter initialized with {len(measurements_rad)} measurements over {time_span:.1f}s")
+    print(f"Initial velocities: v_dist={self.x[3]:.2f}m/s, v_az={np.degrees(self.x[4]):.1f}°/s, v_el={np.degrees(self.x[5]):.1f}°/s")
+
 
 
 if __name__ == "__main__":

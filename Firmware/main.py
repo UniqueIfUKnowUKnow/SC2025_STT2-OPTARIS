@@ -96,19 +96,45 @@ def main():
                     current_state = states[2]
 
             elif current_state == "DETECTED":
-
                 anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
                 first_scan_positions = coords_array[:, :3]
                 first_scan_timestamps = coords_array[:, 3:].flatten()
-                kf.process_measurement_sequence(first_scan_positions, first_scan_timestamps)
-
-                for dist, az_deg, el_deg in first_scan_positions:
-                    initial_rad.append([dist, np.radians(az_deg), np.radians(el_deg)])
                 
-                print(anomaly_averaged_coords)
+                # Convert degrees to radians for Kalman filter
+                measurements_for_kalman = []
+                for i, pos in enumerate(first_scan_positions):
+                    dist, az_deg, el_deg = pos[0], pos[1], pos[2]
+                    # Convert to radians
+                    az_rad = np.radians(az_deg)
+                    el_rad = np.radians(el_deg)
+                    measurements_for_kalman.append([dist, az_rad, el_rad])
+                
+                # DEBUG: Print converted measurements
+                print("=== KALMAN FILTER DEBUG ===")
+                print("Measurements in degrees:")
+                for i, pos in enumerate(first_scan_positions):
+                    print(f"  {i}: [{pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}] at t={first_scan_timestamps[i]:.3f}")
+                
+                print("Measurements in radians for Kalman:")
+                for i, pos in enumerate(measurements_for_kalman):
+                    print(f"  {i}: [{pos[0]:.1f}, {pos[1]:.3f}, {pos[2]:.3f}]")
+                
+                # Initialize Kalman filter
+                kf.process_measurement_sequence(measurements_for_kalman, first_scan_timestamps)
+                
+                # DEBUG: Check initial state
+                kf.debug_velocities()
+                
+                # Test prediction
+                test_future_time = first_scan_timestamps[-1] + 1.0
+                test_prediction = kf.predict_future_positions([test_future_time])
+                pred_deg = kf.convert_prediction_to_degrees(test_prediction[0])
+                print(f"Test prediction (+1s): dist={pred_deg[0]:.1f}m, az={pred_deg[1]:.1f}°, el={pred_deg[2]:.1f}°")
+                print("=== END DEBUG ===\n")
 
                 print("Target detected! Starting EKF tracking...")
+                
                 # Clear LiDAR queue before starting
                 while not lidar_data_queue.empty():
                     try:
@@ -117,23 +143,27 @@ def main():
                         break
 
                 max_tracking_cycles = 20
-    
+
                 while locked_in < max_tracking_cycles:
-                    # Get Predicted positions 1 sec in future
-                    current_time = first_scan_timestamps[-1] if len(first_scan_timestamps) > 0 else time.time()
+                    # Use current time for prediction
+                    current_time = time.time()
                     future_time = current_time + 1
                     
                     predicted_positions = kf.predict_future_positions([future_time])
-                    predicted_position = predicted_positions[0]  # Get first (and only) prediction
+                    predicted_position = predicted_positions[0]  # [distance, azimuth_rad, elevation_rad]
                     
-                    # Convert to degrees and move motors there
-                    pos_deg = [predicted_position[0], np.degrees(predicted_position[1]), np.degrees(predicted_position[2])]
-                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, pos_deg[1], pos_deg[2], stepper_steps)
+                    # Convert prediction to degrees for motor control
+                    pos_deg = kf.convert_prediction_to_degrees(predicted_position)
                     
-                    # Perform single detection scan
+                    print(f"Prediction: Az={pos_deg[1]:.1f}°, El={pos_deg[2]:.1f}°")
+                    
+                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(
+                        pi, pos_deg[1], pos_deg[2], stepper_steps)
+                    
+                    # Perform detection scan
                     current_azimuth, current_elevation, stepper_steps, new_anomaly_coords, anomaly_count, should_change_state = perform_scanning_sequence(
                         pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                        stepper_steps, anomaly_locations, [], anomaly_count, 1  # Reset anomaly tracking for single detection
+                        stepper_steps, anomaly_locations, [], anomaly_count, 1
                     )
 
                     if anomaly_count == 1:
@@ -142,21 +172,21 @@ def main():
                     
                     # Process new measurement if found
                     if new_anomaly_coords and len(new_anomaly_coords) > 0:
-                        # Extract the measurement data
-                        coord_data = new_anomaly_coords[0][0]  # Get the tuple from the nested structure
-                        current_measurement = [coord_data[0], coord_data[1], coord_data[2]]  # [distance, azimuth, elevation]
-                        measurement_time = coord_data[3]  # timestamp
+                        coord_data = new_anomaly_coords[0][0]
+                        current_measurement_deg = [coord_data[0], coord_data[1], coord_data[2]]
                         
-                        # Update Kalman filter with the new measurement
-                        # Note: update_with_delayed_measurement doesn't exist in your Kalman filter
-                        # Use update_with_measurement_at_time instead
-                        kf.update_with_measurement_at_time(
-                            [current_measurement[0], np.radians(current_measurement[1]), np.radians(current_measurement[2])], 
-                            measurement_time
-                        )
+                        # Convert to radians for Kalman filter
+                        current_measurement_rad = kf.convert_measurement_to_radians(current_measurement_deg)
+                        measurement_time = time.time()
                         
-                        plot_data.append((current_measurement[0], current_measurement[1], current_measurement[2]))
-                        print(f"Tracking cycle {locked_in + 1}: Updated with measurement at ({current_measurement[1]:.1f}°, {current_measurement[2]:.1f}°)")
+                        # Update Kalman filter
+                        kf.update_with_measurement_at_time(current_measurement_rad, measurement_time)
+                        
+                        plot_data.append((current_measurement_deg[0], current_measurement_deg[1], current_measurement_deg[2]))
+                        print(f"Tracking cycle {locked_in + 1}: Updated with measurement at ({current_measurement_deg[1]:.1f}°, {current_measurement_deg[2]:.1f}°)")
+                        
+                        # Debug the updated state
+                        kf.debug_velocities()
                     else:
                         print(f"Tracking cycle {locked_in + 1}: No target detected at predicted position")
                     

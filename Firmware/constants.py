@@ -42,6 +42,7 @@ INITIAL_SWEEP_DETECTIONS_COUNT = 5
 # Kalman Filter Settings
 KALMAN_ERROR_RANGE = 1
 START_TIME = 0
+DT = 0.5
 
 # Test TLE
 satellite_name = "ISS (ZARYA)"
