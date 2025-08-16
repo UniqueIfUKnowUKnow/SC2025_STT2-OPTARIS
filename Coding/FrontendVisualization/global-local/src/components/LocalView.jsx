@@ -172,13 +172,7 @@ const LiveTelemetry = ({ liveTelemetry }) => {
         textAlign: 'center'
       }}
     >
-      <div style={{ marginBottom: '10px', fontWeight: 'bold', color: '#00ff88' }}>
-        Live Telemetry
-      </div>
-      <div>Pan: {liveTelemetry.pan_angle?.toFixed(1) || 'N/A'}°</div>
-      <div>Tilt: {liveTelemetry.tilt_angle?.toFixed(1) || 'N/A'}°</div>
-      <div>Signal: {liveTelemetry.signal_strength?.toFixed(1) || 'N/A'}%</div>
-      <div>Distance: {liveTelemetry.distance?.toFixed(2) || 'N/A'} m</div>
+  
     </Html>
   );
 };
@@ -200,30 +194,6 @@ const Legend = () => {
         minWidth: '180px'
       }}
     >
-      <div style={{ marginBottom: '10px', fontWeight: 'bold', color: '#00ff88' }}>
-        Visual Legend
-      </div>
-      <div style={{ marginBottom: '5px' }}>
-        <span style={{ color: 'red' }}>■</span> LiDAR Sensor
-      </div>
-      <div style={{ marginBottom: '5px' }}>
-        <span style={{ color: 'lime' }}>●</span> Target Position
-      </div>
-      <div style={{ marginBottom: '5px' }}>
-        <span style={{ color: 'white' }}>●</span> History (fades)
-      </div>
-      <div style={{ marginBottom: '5px' }}>
-        <span style={{ color: 'cyan' }}>─</span> Scanner Beam
-      </div>
-      <div style={{ marginBottom: '5px' }}>
-        <span style={{ color: 'red' }}>─</span> Tracking Beam
-      </div>
-      <div style={{ marginBottom: '5px' }}>
-        <span style={{ color: 'cyan' }}>○</span> 12m Range Sphere
-      </div>
-      <div style={{ marginBottom: '5px' }}>
-        <span style={{ color: '#ff6b35' }}>─</span> Predicted Orbit
-      </div>
     </Html>
   );
 };
@@ -309,10 +279,8 @@ const LocalView = ({
       />
       
       {/* Live telemetry display */}
-      <LiveTelemetry liveTelemetry={liveTelemetry} />
-      
       {/* Visual legend */}
-      <Legend />
+         {/* Live telemetry display and visual legend overlays removed as requested */}
     </group>
   );
 };
