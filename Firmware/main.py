@@ -77,7 +77,7 @@ def main():
     t_last = None
     anomaly_found = False
     sigma2_azi = np.radians(3)**2
-    sigma2_phi = np.radians(3)**2
+    sigma2_tilt = np.radians(3)**2
 
     
     try:
@@ -119,6 +119,8 @@ def main():
                 first_scan_pos = coords_array[:, :3]
                 first_scan_time = coords_array[:, 3:].flatten()
                 
+                print("first scan position in degrees")
+                print(first_scan_pos)
                 # Convert degrees to radians for Kalman filter
                 for i, pos in enumerate(first_scan_pos):
                     dist, az_deg, el_deg = pos[0], pos[1], pos[2]
@@ -153,7 +155,8 @@ def main():
                 
                 azi_filter = [theta_mean, w_theta_ini]
                 tilt_filter = [phi_mean, w_phi_ini]
-
+                print("initial estimations for velocity")
+                print(w_theta_ini, w_phi_ini)
                 while True:
                     
                         # Clear LiDAR queue before starting
@@ -167,7 +170,7 @@ def main():
 
                     azi_pred = azi_filter[0] + azi_filter[1] * t_step
                     tilt_pred = tilt_filter[0] + tilt_filter[1] * t_step
-
+                    print(azi_pred, tilt_pred)
                     #first scan at predicted area
 
                     anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
@@ -194,7 +197,7 @@ def main():
 
                         # Need to wrap azimuth around 2pi
                         azi_filter = [azi_pred + ALPHA_THETA * azi_residual, azi_filter[1] + (BETA_THETA/t_step) * azi_residual]
-                        tilt_filter = [tilt_pred + ALPHA_PHI * tilt_residual, azi_filter[2] + (BETA_PHI/t_step) * tilt_residual]
+                        tilt_filter = [tilt_pred + ALPHA_PHI * tilt_residual, tilt_filter[1] + (BETA_PHI/t_step) * tilt_residual]
 
                         # Wrap azimuth around 2π
                         if azi_filter[0] > 2*np.pi:
