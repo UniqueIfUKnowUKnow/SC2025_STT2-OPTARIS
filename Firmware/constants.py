@@ -40,7 +40,6 @@ INITIAL_SWEEP_DETECTIONS_COUNT = 5
 
 
 # Tracking Prediction Settings
-<<<<<<< HEAD
 DT = 1
 KALMAN_ERROR_RANGE = 1
 START_TIME = 0
@@ -54,8 +53,8 @@ BETA_PHI = 0.15
 #Residual smoothing (uncertainty; EWMA factor) 
 LAMBDA = 0.95 
 #Process floor for variance (convert to radians²)
-Q_THE = (np.radians(0.2))**2
-Q_PHI = (np.radians(0.2))**2 
+Q_AZI = (np.radians(0.2))**2
+Q_TILT = (np.radians(0.2))**2 
 #Scan sizing (≈99% capture if residuals are Gaussian) 
 KA = 2.5 
 #Minimum half-width of scan (≥ half of 2° FoV) 
@@ -67,22 +66,11 @@ W_THETA_MAX = np.radians(170)
 W_PHI_MAX = np.radians(60)
 #Time step
 DT = 0.5
-=======
-
-DT = 1
-KALMAN_ERROR_RANGE = 1
-START_TIME = 0
->>>>>>> refs/remotes/origin/main
 
 # Test TLE
 satellite_name = "ISS (ZARYA)"
 line1 = "1 25544U 98067A   24225.51782528  .00016717  00000-0  30199-3 0  9992"
 line2 = "2 25544  51.6426  95.0936 0007310  00.0000  60.6990 15.50209251454141"
 
-<<<<<<< HEAD
 AZIMUTH_AMOUNT = 10
 TILT_AMOUNT = 0
-=======
-AZIMUTH_AMOUNT = 0 
-TILT_AMOUNT = -5
->>>>>>> refs/remotes/origin/main

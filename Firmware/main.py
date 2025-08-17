@@ -65,13 +65,17 @@ def main():
     anomaly_total = 0
 
     #Tracking constants for "DETECTED" state
+    az_rad = []
+    el_rad = []
     azi_filter = []
     tilt_filter = []
     ang_filter = []
     angvel_filter = []
     variance = []
     t_last = None
+    anomaly_found = False
 
+    
     try:
         while True:
             if current_state == "CALIBRATING":
@@ -83,7 +87,7 @@ def main():
                 save_calibration_data(calibration_data)
 
                 # Moving to right of ascending node
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 70 , stepper_steps)
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
 
                 calibration_done = True
                 if calibration_done:
@@ -98,7 +102,7 @@ def main():
                 #Sweeping for points
                 current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
                     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 5
+                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3
                 )
 
                 if calibration_done:
@@ -116,8 +120,8 @@ def main():
                 for i, pos in enumerate(first_scan_pos):
                     dist, az_deg, el_deg = pos[0], pos[1], pos[2]
                     # Convert to radians
-                    az_rad = np.radians(az_deg)
-                    el_rad = np.radians(el_deg)
+                    az_rad.append(np.radians(az_deg))
+                    el_rad.append(np.radians(el_deg))
                     first_scan_pos_rad.append([dist, az_rad, el_rad])
                 
                 #Calculate least-square slope
@@ -133,35 +137,67 @@ def main():
                 numerator = np.sum((first_scan_time - t_mean) * (el_rad - phi_mean))
                 w_phi_ini = numerator / denominator
                 
-                t_last = time.time()
-                anomaly_found = True
+                t_last = first_scan_time[-1]
 
                 #default time step
                 t_step = DT
+                
+                azi_filter = [theta_mean, t_step*w_theta_ini]
+                tilt_filter = [phi_mean, t_step*w_phi_ini]
 
-                # Clear LiDAR queue before starting
-                while not lidar_data_queue.empty():
-                    try:
-                        lidar_data_queue.get_nowait()
-                    except queue.Empty:
-                        break
-                while not anomaly_found:
+                while True:
                     
-                    azi_pred = az_rad + t_step*w_theta_ini  
-                    tilt_pred = el_rad + t_step*w_phi_ini  
-                    
+                        # Clear LiDAR queue before starting
+                    while not lidar_data_queue.empty():
+                        try:
+                            lidar_data_queue.get_nowait()
+                        except queue.Empty:
+                            break
+
+                    t_step = time.time() - t_last
+
+                    azi_pred = azi_filter[0] + azi_filter[1] 
+                    tilt_pred = tilt_filter[0] + tilt_filter[1]
+
+                    #first scan at predicted area
+
                     anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_local_search(
                         pi, lidar_data_queue, calibration_data, azi_pred, tilt_pred, stepper_steps)
                     
-                #compute residuals (difference b/n measurement and prediction)
-                azi_residual = anomaly_measured[1] - azi_pred
-                tilt_residual = anomaly_measured[2] - tilt_pred
+                    if not anomaly_found:
+                        st_dev_azi = np.sqrt(sigma2_azi)
+                        st_dev_tilt = np.sqrt(sigma2_tilt)
+                        azi_half_width = np.max([W_MIN, KA * st_dev_azi])
+                        tilt_half_width = np.max([W_MIN, KA * st_dev_tilt])
 
-                azi_filter = [azi_pred + ALPHA_THETA * azi_residual, 
-                              
-                              
-                              
-                              ] 
+                        #TEMP AVERAGING
+                        scan_width = np.degrees( (np.abs(azi_half_width) + np.abs(tilt_half_width)) / 2)
+                        while not anomaly_found:
+                            
+                            anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_local_search(
+                            pi, lidar_data_queue, calibration_data, azi_pred, tilt_pred, stepper_steps, scan_width)
+
+                    if anomaly_found:
+                        #compute residuals (difference b/n measurement and prediction)
+                        azi_residual = anomaly_measured[1] - azi_pred
+                        tilt_residual = anomaly_measured[2] - tilt_pred
+
+                        # Need to wrap azimuth around 2pi
+                        azi_filter = [azi_pred + ALPHA_THETA * azi_residual, w_theta_ini + (BETA_THETA/t_step) * azi_residual]
+                        tilt_filter = [tilt_pred + ALPHA_PHI * tilt_residual, w_phi_ini + (BETA_PHI/t_step) * tilt_residual]
+
+                        sigma2_azi = LAMBDA * sigma2_azi + ( (1 - LAMBDA) * (azi_residual ** 2) ) + Q_AZI
+                        sigma2_tilt = LAMBDA * sigma2_tilt + ( (1 - LAMBDA) * (tilt_residual ** 2) ) + Q_TILT
+                        
+                        t_last = anomaly_measured[3]
+
+
+
+
+
+                    
+                
+                
 
                 
                      
