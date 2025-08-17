@@ -66,6 +66,7 @@ def main():
     anomaly_total = 0
 
     #Tracking constants for "DETECTED" state
+    first_scan_pos_rad = []
     az_rad = []
     el_rad = []
     azi_filter = []
@@ -119,14 +120,19 @@ def main():
                 first_scan_time = coords_array[:, 3:].flatten()
                 
                 # Convert degrees to radians for Kalman filter
-                first_scan_pos_rad = []
                 for i, pos in enumerate(first_scan_pos):
                     dist, az_deg, el_deg = pos[0], pos[1], pos[2]
                     # Convert to radians
-                    az_rad.append(np.radians(az_deg))
-                    el_rad.append(np.radians(el_deg))
-                    first_scan_pos_rad.append([dist, az_rad, el_rad])
+                    az_rad_single = np.radians(az_deg)
+                    el_rad_single = np.radians(el_deg)
+                    
+                    az_rad.append(az_rad_single)
+                    el_rad.append(el_rad_single)
+                    first_scan_pos_rad.append([dist, az_rad_single, el_rad_single])  # Use individual values
+   
                 
+                print("first scan positions in radians")
+                print(first_scan_pos_rad)
                 #Calculate least-square slope
                 t_mean = np.mean(first_scan_time)
                 theta_mean = np.mean(az_rad)
@@ -145,8 +151,8 @@ def main():
                 #default time step
                 t_step = DT
                 
-                azi_filter = [theta_mean, t_step*w_theta_ini]
-                tilt_filter = [phi_mean, t_step*w_phi_ini]
+                azi_filter = [theta_mean, w_theta_ini]
+                tilt_filter = [phi_mean, w_phi_ini]
 
                 while True:
                     
@@ -159,8 +165,8 @@ def main():
 
                     t_step = time.time() - t_last
 
-                    azi_pred = azi_filter[0] + azi_filter[1] 
-                    tilt_pred = tilt_filter[0] + tilt_filter[1]
+                    azi_pred = azi_filter[0] + azi_filter[1] * t_step
+                    tilt_pred = tilt_filter[0] + tilt_filter[1] * t_step
 
                     #first scan at predicted area
 
@@ -183,13 +189,19 @@ def main():
 
                     if anomaly_found:
                         #compute residuals (difference b/n measurement and prediction)
-                        azi_residual = np.rad(anomaly_measured[1]) - azi_pred
-                        tilt_residual = np.rad(anomaly_measured[2]) - tilt_pred
+                        azi_residual = np.radians(anomaly_measured[1]) - azi_pred
+                        tilt_residual = np.radians(anomaly_measured[2]) - tilt_pred
 
                         # Need to wrap azimuth around 2pi
-                        azi_filter = [azi_pred + ALPHA_THETA * azi_residual, w_theta_ini + (BETA_THETA/t_step) * azi_residual]
-                        tilt_filter = [tilt_pred + ALPHA_PHI * tilt_residual, w_phi_ini + (BETA_PHI/t_step) * tilt_residual]
+                        azi_filter = [azi_pred + ALPHA_THETA * azi_residual, azi_filter[1] + (BETA_THETA/t_step) * azi_residual]
+                        tilt_filter = [tilt_pred + ALPHA_PHI * tilt_residual, azi_filter[2] + (BETA_PHI/t_step) * tilt_residual]
 
+                        # Wrap azimuth around 2π
+                        if azi_filter[0] > 2*np.pi:
+                            azi_filter[0] -= 2*np.pi
+                        elif azi_filter[0] < 0:
+                            azi_filter[0] += 2*np.pi
+                        
                         sigma2_azi = LAMBDA * sigma2_azi + ( (1 - LAMBDA) * (azi_residual ** 2) ) + Q_AZI
                         sigma2_tilt = LAMBDA * sigma2_tilt + ( (1 - LAMBDA) * (tilt_residual ** 2) ) + Q_TILT
                         
