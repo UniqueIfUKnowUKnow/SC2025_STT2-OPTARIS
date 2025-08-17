@@ -104,6 +104,10 @@ def main():
                     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
                     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3
                 )
+                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done  = perform_scanning_sequence(
+                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                         stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3, 
+                         azimuth_range=10, elevation_range=3)
 
                 if calibration_done:
                     current_state = states[2]
