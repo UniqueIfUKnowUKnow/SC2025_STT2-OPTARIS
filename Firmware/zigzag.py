@@ -135,7 +135,7 @@ def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_az
     # Start at center elevation
     current_scan_elevation = center_elevation
     set_servo_angle(pi, current_scan_elevation)
-    time.sleep(0.3)  # Allow servo to settle
+    time.sleep(0.01)  # Allow servo to settle
     
     # Scanning state variables
     elevation_direction = 1  # 1 for up, -1 for down
@@ -175,21 +175,19 @@ def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_az
         if min_elevation <= next_elevation <= max_elevation:
             current_scan_elevation = next_elevation
             set_servo_angle(pi, current_scan_elevation)
-            time.sleep(0.2)  # Allow servo to settle
+            time.sleep(0.01)  # Allow servo to settle
             print(f"Moved to elevation: {current_scan_elevation:.1f}°")
         
         # Alternate sweep direction for next sweep
         sweep_direction = "reverse" if sweep_direction == "forward" else "forward"
         sweep_count += 1
         
-        # Optional: Add a small delay between sweeps
-        time.sleep(0.1)
     
     # Return to center elevation when done
     if current_scan_elevation != center_elevation:
         print(f"Returning to center elevation: {center_elevation:.1f}°")
         set_servo_angle(pi, center_elevation)
-        time.sleep(0.3)
+        time.sleep(0.01)
         current_elevation = center_elevation
     else:
         current_elevation = current_scan_elevation
