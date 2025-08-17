@@ -121,6 +121,12 @@ def main():
                 
                 print("first scan position in degrees")
                 print(first_scan_pos)
+                
+                # RESET DIRECTION PIN TO KNOWN STATE BEFORE TRACKING
+                print("Resetting direction pin to known state for tracking...")
+                GPIO.output(DIR_PIN, GPIO.HIGH)
+                time.sleep(0.002)  # Allow direction to settle
+                
                 # Convert degrees to radians for Kalman filter
                 for i, pos in enumerate(first_scan_pos):
                     dist, az_deg, el_deg = pos[0], pos[1], pos[2]
@@ -156,10 +162,17 @@ def main():
                 azi_filter = [theta_mean, w_theta_ini]
                 tilt_filter = [phi_mean, w_phi_ini]
                 print("initial estimations for velocity")
-                print(w_theta_ini, w_phi_ini)
-                while True:
+                print(f"Azimuth velocity: {w_theta_ini} rad/s ({np.degrees(w_theta_ini):.2f} deg/s)")
+                print(f"Elevation velocity: {w_phi_ini} rad/s ({np.degrees(w_phi_ini):.2f} deg/s)")
+                
+                tracking_iteration = 0
+                max_tracking_iterations = 100  # Safety limit
+                
+                while tracking_iteration < max_tracking_iterations:
+                    tracking_iteration += 1
+                    print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
                     
-                        # Clear LiDAR queue before starting
+                    # Clear LiDAR queue before starting
                     while not lidar_data_queue.empty():
                         try:
                             lidar_data_queue.get_nowait()
@@ -170,9 +183,21 @@ def main():
 
                     azi_pred = azi_filter[0] + azi_filter[1] * t_step
                     tilt_pred = tilt_filter[0] + tilt_filter[1] * t_step
-                    print(azi_pred, tilt_pred)
+                    
+                    # Wrap azimuth prediction to 0-2π range
+                    while azi_pred >= 2*np.pi:
+                        azi_pred -= 2*np.pi
+                    while azi_pred < 0:
+                        azi_pred += 2*np.pi
+                    
+                    print(f"Predicted position: Az={np.degrees(azi_pred):.1f}°, El={np.degrees(tilt_pred):.1f}°")
+                    print(f"Time step: {t_step:.3f}s")
+                    
+                    # Debug: Print current stepper position before movement
+                    current_az_debug = (stepper_steps / STEPS_PER_REVOLUTION) * 360.0
+                    print(f"Current stepper position before move: {current_az_debug:.1f}° (steps: {stepper_steps})")
+                    
                     #first scan at predicted area
-
                     anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
                                 pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
                                 stepper_steps)
@@ -183,19 +208,30 @@ def main():
                         azi_half_width = np.max([W_MIN, KA * st_dev_azi])
                         tilt_half_width = np.max([W_MIN, KA * st_dev_tilt])
 
-                        #TEMP AVERAGING
-                        while not anomaly_found:
-                            
-                            anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
-                                pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
-                                stepper_steps, np.degrees(azi_half_width*2), np.degrees(tilt_half_width*2))
+                        print(f"Target not found at predicted location. Expanding search...")
+                        print(f"Search area: Az±{np.degrees(azi_half_width):.1f}°, El±{np.degrees(tilt_half_width):.1f}°")
+                        
+                        # Expanded search
+                        anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
+                            pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
+                            stepper_steps, np.degrees(azi_half_width*2), np.degrees(tilt_half_width*2))
 
                     if anomaly_found:
-                        #compute residuals (difference b/n measurement and prediction)
+                        print(f"TARGET FOUND at Az={anomaly_measured[1]:.1f}°, El={anomaly_measured[2]:.1f}°")
+                        
+                        #compute residuals (difference between measurement and prediction)
                         azi_residual = np.radians(anomaly_measured[1]) - azi_pred
                         tilt_residual = np.radians(anomaly_measured[2]) - tilt_pred
+                        
+                        # Handle azimuth wrap-around for residual calculation
+                        if azi_residual > np.pi:
+                            azi_residual -= 2*np.pi
+                        elif azi_residual < -np.pi:
+                            azi_residual += 2*np.pi
 
-                        # Need to wrap azimuth around 2pi
+                        print(f"Residuals: Az={np.degrees(azi_residual):.2f}°, El={np.degrees(tilt_residual):.2f}°")
+                        
+                        # Update filter estimates
                         azi_filter = [azi_pred + ALPHA_THETA * azi_residual, azi_filter[1] + (BETA_THETA/t_step) * azi_residual]
                         tilt_filter = [tilt_pred + ALPHA_PHI * tilt_residual, tilt_filter[1] + (BETA_PHI/t_step) * tilt_residual]
 
@@ -205,24 +241,27 @@ def main():
                         elif azi_filter[0] < 0:
                             azi_filter[0] += 2*np.pi
                         
+                        # Update variance estimates
                         sigma2_azi = LAMBDA * sigma2_azi + ( (1 - LAMBDA) * (azi_residual ** 2) ) + Q_AZI
                         sigma2_tilt = LAMBDA * sigma2_tilt + ( (1 - LAMBDA) * (tilt_residual ** 2) ) + Q_TILT
                         
                         t_last = anomaly_measured[3]
-
-
-
-
-
-                    
+                        
+                        print(f"Updated estimates: Az={np.degrees(azi_filter[0]):.1f}°, El={np.degrees(tilt_filter[0]):.1f}°")
+                        print(f"Updated velocities: Az_vel={np.degrees(azi_filter[1]):.2f}°/s, El_vel={np.degrees(tilt_filter[1]):.2f}°/s")
+                        
+                        # Store tracking data for later analysis
+                        plot_data.append([anomaly_measured[0], anomaly_measured[1], anomaly_measured[2]])
+                        
+                    else:
+                        print("TARGET LOST - Could not find target in expanded search area")
+                        print("Continuing with prediction-only mode...")
+                        # You might want to expand search further or exit tracking
+                        break
                 
-                
-
-                
-                     
-
                 print("Tracking complete. Saving trajectory data...")
-                save_calibration_data(plot_data)
+                if plot_data:
+                    save_calibration_data(plot_data)
                 
                 
     except KeyboardInterrupt:

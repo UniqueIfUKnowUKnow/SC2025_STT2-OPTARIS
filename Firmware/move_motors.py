@@ -22,13 +22,20 @@ def reset_stepper_pos(stepper_steps_taken):
         GPIO.output(DIR_PIN, GPIO.LOW)
     else:
         GPIO.output(DIR_PIN, GPIO.HIGH)
+    
+    # Add delay after direction change
+    time.sleep(0.001)
+    
     if stepper_steps_taken > 0:
         for _ in range(stepper_steps_taken):
             GPIO.output(STEP_PIN, GPIO.HIGH)
             time.sleep(STEPPER_PULSE_DELAY)
             GPIO.output(STEP_PIN, GPIO.LOW)
             time.sleep(STEPPER_PULSE_DELAY)
+    
+    # Reset to known direction state
     GPIO.output(DIR_PIN, GPIO.HIGH)
+    time.sleep(0.001)  # Allow direction to settle
     stepper_steps_taken = 0
     print("Stepper pos reset and dir pin set to HIGH")
 
@@ -60,13 +67,16 @@ def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0):
     
     # Move stepper motor
     if steps_to_move != 0:
-        # Set direction
+        # Set direction with proper delay
         if steps_to_move > 0:
             GPIO.output(DIR_PIN, GPIO.HIGH)  # Clockwise
             direction = "CW"
         else:
             GPIO.output(DIR_PIN, GPIO.LOW)   # Counter-clockwise
             direction = "CCW"
+        
+        # Critical: Add delay after direction change
+        time.sleep(0.001)
         
         # Execute steps
         for _ in range(abs(steps_to_move)):
@@ -102,6 +112,10 @@ def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth
     # Normalize target azimuth to 0-360 range
     target_azimuth = target_azimuth % 360.0
     
+    # Convert current steps to current azimuth for debugging
+    current_azimuth = (current_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
+    print(f"Current position: Az={current_azimuth:.1f}° (steps: {current_azimuth_steps})")
+    
     # Convert target azimuth to steps
     target_steps = int((target_azimuth / 360.0) * STEPS_PER_REVOLUTION)
     
@@ -115,18 +129,25 @@ def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth
         else:
             steps_to_move += STEPS_PER_REVOLUTION
     
+    print(f"Steps calculation: target_steps={target_steps}, current_steps={current_azimuth_steps}, steps_to_move={steps_to_move}")
+    
     # Move stepper motor if movement is needed
     if steps_to_move != 0:
         # Set direction
         if steps_to_move > 0:
             GPIO.output(DIR_PIN, GPIO.HIGH)  # Clockwise
             direction = "CW"
+            print(f"Setting direction: CLOCKWISE (HIGH)")
         else:
             GPIO.output(DIR_PIN, GPIO.LOW)   # Counter-clockwise
             direction = "CCW"
+            print(f"Setting direction: COUNTER-CLOCKWISE (LOW)")
+        
+        # CRITICAL: Add delay after direction change to ensure it takes effect
+        time.sleep(0.002)  # Increased delay for DRV8825 setup time
         
         print(f"Moving stepper {abs(steps_to_move)} steps {direction} "
-              f"(from {current_azimuth_steps} to {target_steps})")
+              f"(from {current_azimuth_steps} to target {target_steps})")
         
         # Execute steps
         for step in range(abs(steps_to_move)):
