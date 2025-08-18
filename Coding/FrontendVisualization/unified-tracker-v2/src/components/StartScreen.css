@@ -1,0 +1,326 @@
+/* StartScreen.css - Styling for the application entry screen */
+
+.start-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: white;
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.start-background {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Animated background particles for visual interest */
+.start-background::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(circle at 20% 80%, rgba(0, 255, 136, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 107, 53, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(78, 156, 255, 0.05) 0%, transparent 50%);
+  animation: backgroundFloat 20s ease-in-out infinite;
+}
+
+@keyframes backgroundFloat {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(180deg); }
+}
+
+/* Main content area centered on the screen */
+.start-content {
+  text-align: center;
+  z-index: 2;
+  max-width: 800px;
+  padding: 40px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  animation: contentFadeIn 1s ease-out;
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Main application title */
+.app-title {
+  font-size: 3.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 20px 0;
+  text-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+  background: linear-gradient(45deg, #00ff88, #4e9cff, #ff6b35);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: titleGlow 3s ease-in-out infinite;
+}
+
+@keyframes titleGlow {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Subtitle text */
+.app-subtitle {
+  font-size: 1.3rem;
+  color: #b0b0b0;
+  margin: 0 0 30px 0;
+  font-weight: 300;
+  letter-spacing: 1px;
+}
+
+/* Description text */
+.app-description {
+  margin: 0 0 40px 0;
+  line-height: 1.6;
+}
+
+.app-description p {
+  color: #cccccc;
+  font-size: 1.1rem;
+  margin: 0 0 15px 0;
+  font-weight: 300;
+}
+
+/* Start button styling */
+.start-button {
+  background: linear-gradient(45deg, #00ff88, #00cc6a);
+  color: #000000;
+  border: none;
+  padding: 18px 40px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  position: relative;
+  overflow: hidden;
+}
+
+.start-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 15px 40px rgba(0, 255, 136, 0.4);
+  background: linear-gradient(45deg, #00cc6a, #00ff88);
+}
+
+.start-button:active {
+  transform: translateY(-1px);
+}
+
+.start-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.start-button:hover::before {
+  left: 100%;
+}
+
+/* Technical information section */
+.tech-info {
+  margin-top: 40px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tech-info p {
+  color: #888888;
+  font-size: 0.9rem;
+  margin: 5px 0;
+  font-family: 'Courier New', monospace;
+}
+
+/* Date and time display at the bottom */
+.datetime-display {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 20px 30px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.date-text {
+  color: #cccccc;
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+  font-weight: 300;
+}
+
+.time-text {
+  color: #00ff88;
+  font-size: 1.8rem;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+}
+
+/* Decorative elements */
+.decorative-elements {
+  position: absolute;
+  top: 40px;
+  right: 40px;
+  z-index: 2;
+}
+
+/* Status dots that indicate system readiness */
+.status-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #00ff88;
+  animation: dotPulse 2s ease-in-out infinite;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.3s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+@keyframes dotPulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* Responsive design for different screen sizes */
+@media (max-width: 1400px) {
+  .start-content {
+    max-width: 90%;
+    padding: 30px 20px;
+  }
+  
+  .app-title {
+    font-size: 2.5rem;
+  }
+  
+  .app-subtitle {
+    font-size: 1.1rem;
+  }
+  
+  .app-description p {
+    font-size: 1rem;
+  }
+  
+  .start-button {
+    padding: 15px 30px;
+    font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .start-content {
+    max-width: 90%;
+    padding: 30px 20px;
+  }
+  
+  .app-title {
+    font-size: 2rem;
+  }
+  
+  .app-subtitle {
+    font-size: 1.1rem;
+  }
+  
+  .app-description p {
+    font-size: 1rem;
+  }
+  
+  .start-button {
+    padding: 15px 30px;
+    font-size: 1.1rem;
+  }
+  
+  .datetime-display {
+    bottom: 20px;
+    padding: 15px 20px;
+  }
+  
+  .time-text {
+    font-size: 1.5rem;
+  }
+  
+  .decorative-elements {
+    top: 20px;
+    right: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-title {
+    font-size: 2rem;
+  }
+  
+  .start-content {
+    padding: 25px 15px;
+  }
+  
+  .datetime-display {
+    bottom: 15px;
+    padding: 12px 15px;
+  }
+  
+  .time-text {
+    font-size: 1.3rem;
+  }
+}
