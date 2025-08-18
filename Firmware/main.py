@@ -20,6 +20,52 @@ from zigzag import perform_targeted_scan
 from coordinate_transfer import *
 
 
+# --- WebSocket Bridge (React UI) ---
+# Allow importing the RPi WS server from sat-track/scripts
+import os, sys, asyncio
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+WS_DIR = os.path.join(SCRIPT_DIR, '..', 'sat-track', 'scripts')
+if WS_DIR not in sys.path:
+    sys.path.append(WS_DIR)
+try:
+    from rpi_ws_server import start_server, bridge, geodetic_to_ecef, lidar_spherical_to_ecef_delta
+except Exception as _ws_err:
+    bridge = None
+    start_server = None
+    geodetic_to_ecef = None
+    lidar_spherical_to_ecef_delta = None
+    print("[WS] WebSocket bridge not available:", _ws_err)
+
+
+# Ground station location (Sofia Tech Park), used for ECEF trajectory
+GS_LAT = 42.6501
+GS_LON = 23.3795
+GS_ALT_KM = 0.6
+
+
+def _start_ws_server_in_thread():
+    """Start the RPi WebSocket server in a background thread."""
+    if start_server is None:
+        return
+
+    def _run():
+        try:
+            asyncio.run(start_server(run_forever=True))
+        except Exception as e:
+            print("[WS] Server thread error:", e)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _safe_push(payload):
+    """Push JSON to UI if bridge is available."""
+    try:
+        if bridge is not None:
+            bridge.push_sync(payload)
+    except Exception as e:
+        print("[WS] push error:", e)
+
+
 # --- Main Application ---
 def main():
     """
@@ -27,6 +73,7 @@ def main():
     and the main control loop for the calibration and scanning process.
     """
     # --- Setup ---
+    _start_ws_server_in_thread()
     setup_stepper_gpio()
     pi = pigpio.pi()
     if not pi.connected:
@@ -46,6 +93,11 @@ def main():
     kf = DroneTrajectoryKalman()
 
     tle_data = parse_tle([satellite_name, line1, line2])
+    # Push initial TLE to UI for initial orbit
+    _safe_push({
+        "initial_tle1": line1,
+        "initial_tle2": line2
+    })
     
     # --- State Machine and Variables ---
     states = ["CALIBRATING", "SCANNING", "DETECTED"]
@@ -82,16 +134,29 @@ def main():
     sin_base = None
     phases = []
 
+    # Global trajectory buffer for UI (ECEF km)
+    global_traj = []
+
     
     try:
         while True:
             if current_state == "CALIBRATING":
                 print("Calibrating sensors...")
+                _safe_push({
+                    "status": "CALIBRATING",
+                    "progress": 0,
+                    "live_telemetry": {"statusMessage": "Calibrating sensors..."}
+                })
 
                 # Mapping environment
                 calibration_data = calibrate_environment(pi, lidar_data_queue)
                 print(calibration_data)
                 save_calibration_data(calibration_data)
+                _safe_push({
+                    "status": "CALIBRATING",
+                    "progress": 100,
+                    "live_telemetry": {"statusMessage": "Calibration complete"}
+                })
 
                 # Moving to right of ascending node
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
@@ -104,6 +169,13 @@ def main():
 
             elif current_state == "SCANNING":
                 print("Scanning area...")
+                _safe_push({
+                    "status": "SCANNING",
+                    "live_telemetry": {
+                        "pan_angle": float(current_azimuth),
+                        "tilt_angle": float(current_elevation)
+                    }
+                })
                 
                 
                 #Sweeping for points
@@ -204,6 +276,35 @@ def main():
 
                     if anomaly_found:
                         print(f"TARGET FOUND at Az={anomaly_measured[1]:.1f}°, El={anomaly_measured[2]:.1f}°")
+                        # Push live telemetry and trajectory point to UI
+                        try:
+                            distance_m = float(anomaly_measured[0])
+                            az_deg = float(anomaly_measured[1])
+                            el_deg = float(anomaly_measured[2])
+                            raw_ts = anomaly_measured[3]
+                            ts_ms = int(raw_ts * 1000) if raw_ts < 1e12 else int(raw_ts)
+
+                            if geodetic_to_ecef and lidar_spherical_to_ecef_delta:
+                                obs_x, obs_y, obs_z = geodetic_to_ecef(GS_LAT, GS_LON, GS_ALT_KM)
+                                dx, dy, dz = lidar_spherical_to_ecef_delta(distance_m, az_deg, el_deg, GS_LAT, GS_LON)
+                                x_km = obs_x + dx
+                                y_km = obs_y + dy
+                                z_km = obs_z + dz
+                                global_traj.append({"x": x_km, "y": y_km, "z": z_km, "timestamp": ts_ms})
+                                if len(global_traj) > 1000:
+                                    global_traj = global_traj[-1000:]
+
+                            _safe_push({
+                                "status": "TRACKING_TARGET",
+                                "live_telemetry": {
+                                    "pan_angle": az_deg,
+                                    "tilt_angle": el_deg,
+                                    "distance": distance_m
+                                },
+                                "trajectory_points": global_traj[-200:]
+                            })
+                        except Exception as e:
+                            print("[WS] DETECTED publish error:", e)
                         
                         #compute residuals (difference between measurement and prediction)
                         azi_residual = np.radians(anomaly_measured[1]) - azi_pred
