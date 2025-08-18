@@ -33,6 +33,7 @@ import threading
 from typing import Any, Dict, List, Optional, Set
 
 import websockets
+from pathlib import Path
 
 
 # ======================== Configuration ========================
@@ -141,6 +142,61 @@ class Bridge:
 bridge = Bridge()
 
 
+# ========================= Run control (UI cmds) =========================
+class RunControl:
+    """Shared control signals for firmware run lifecycle within same process.
+
+    Firmware can import this and coordinate start/stop/restart with the UI.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._start_event = threading.Event()
+        self._stop_event = threading.Event()
+        self._running = False
+
+    # UI → Firmware
+    def request_start(self) -> None:
+        with self._lock:
+            self._stop_event.clear()
+            self._start_event.set()
+
+    def request_stop(self) -> None:
+        with self._lock:
+            self._stop_event.set()
+
+    def request_restart(self) -> None:
+        with self._lock:
+            self._stop_event.set()
+            self._start_event.set()
+
+    # Firmware side helpers
+    def wait_for_start_blocking(self) -> None:
+        self._start_event.wait()
+        with self._lock:
+            self._running = True
+
+    def clear_start(self) -> None:
+        with self._lock:
+            self._start_event.clear()
+
+    def is_stop_requested(self) -> bool:
+        return self._stop_event.is_set()
+
+    def acknowledge_stopped(self) -> None:
+        with self._lock:
+            self._running = False
+            self._stop_event.clear()
+            # Leave start_event state as-is; if set, firmware can start again
+
+    def is_running(self) -> bool:
+        with self._lock:
+            return self._running
+
+
+control = RunControl()
+
+
 # ===================== WebSocket server handler =====================
 async def handle_client(ws: websockets.WebSocketServerProtocol):
     await bridge.register(ws)
@@ -154,11 +210,24 @@ async def handle_client(ws: websockets.WebSocketServerProtocol):
 
             cmd = (data.get("command") or data.get("cmd") or "").lower()
             if cmd == "start":
-                # TODO: trigger your program start
-                pass
+                control.request_start()
+                # Inform UI
+                await bridge.push({
+                    "status": "STANDBY",
+                    "warning": "Start requested by UI"
+                })
             elif cmd == "stop":
-                # TODO: trigger your program stop
-                pass
+                control.request_stop()
+                await bridge.push({
+                    "status": "STANDBY",
+                    "warning": "Stop requested by UI"
+                })
+            elif cmd in ("restart", "reset"):
+                control.request_restart()
+                await bridge.push({
+                    "status": "STANDBY",
+                    "warning": "Restart requested by UI"
+                })
             elif cmd == "reset":
                 # TODO: trigger your program reset
                 pass

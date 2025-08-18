@@ -28,12 +28,13 @@ WS_DIR = os.path.join(SCRIPT_DIR, '..', 'sat-track', 'scripts')
 if WS_DIR not in sys.path:
     sys.path.append(WS_DIR)
 try:
-    from rpi_ws_server import start_server, bridge, geodetic_to_ecef, lidar_spherical_to_ecef_delta
+    from rpi_ws_server import start_server, bridge, geodetic_to_ecef, lidar_spherical_to_ecef_delta, control
 except Exception as _ws_err:
     bridge = None
     start_server = None
     geodetic_to_ecef = None
     lidar_spherical_to_ecef_delta = None
+    control = None
     print("[WS] WebSocket bridge not available:", _ws_err)
 
 
@@ -138,6 +139,21 @@ def main():
     
     try:
         while True:
+            # UI lifecycle control: wait for Start, handle Stop/Restart
+            if control is not None:
+                if control.is_stop_requested():
+                    print("UI Stop requested. Returning to standby.")
+                    control.acknowledge_stopped()
+                    # Reset to initial state and loop back to wait for Start
+                    current_state = states[0]
+                    time.sleep(0.1)
+                    continue
+                if not control.is_running():
+                    print("Waiting for UI Start...")
+                    control.wait_for_start_blocking()
+                    control.clear_start()
+                    print("UI Start acknowledged. Running...")
+
             if current_state == "CALIBRATING":
                 print("Calibrating sensors...")
                 _safe_push({
