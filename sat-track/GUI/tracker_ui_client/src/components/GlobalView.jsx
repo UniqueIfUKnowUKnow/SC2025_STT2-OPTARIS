@@ -9,6 +9,8 @@ import Starfield from './Starfield';
 import OrbitPath from './OrbitPath';
 import PredictedOrbit from './PredictedOrbit';
 import ErrorBoundary from './ErrorBoundary';
+import TLEOrbitPath from './TLEOrbitPath';
+import TrajectoryLine from './TrajectoryLine';
 
 // GlobalView Component - This renders the 3D Earth view with satellites and ground station
 // Users can see the entire Earth, track satellites, and click on the ground station to switch to local view
@@ -128,7 +130,11 @@ const GlobalView = ({
   positionHistory,              // History of measurements (hidden in global view)
   predictedOrbitParams,         // Calculated orbital parameters for Optaris
   status,                       // Current system status
-  onGroundStationClick          // Function to call when ground station is clicked
+  onGroundStationClick,         // Function to call when ground station is clicked
+  // NEW props
+  initialSatRec,
+  newSatRec,
+  globalTrajectory
 }) => {
   // Reference to the scene group for managing the 3D objects
   const sceneRef = useRef();
@@ -239,6 +245,23 @@ const GlobalView = ({
         );
       })}
       
+      {/* NEW: Initial and New TLE trajectories (propagated) */}
+      <ErrorBoundary>
+        {initialSatRec && (
+          <TLEOrbitPath satrec={initialSatRec} color="#8888ff" segments={240} durationMinutes={120} />
+        )}
+        {newSatRec && (
+          <TLEOrbitPath satrec={newSatRec} color="#ff3388" segments={240} durationMinutes={120} />
+        )}
+      </ErrorBoundary>
+
+      {/* NEW: Draw received array of points as a trajectory relative to ground/ECEF scene */}
+      <ErrorBoundary>
+        {globalTrajectory && globalTrajectory.length > 1 && (
+          <TrajectoryLine samples={globalTrajectory} color="#ffcc00" width={2} dashed={true} />
+        )}
+      </ErrorBoundary>
+
       {/* Predicted orbit from LiDAR measurements */}
       <ErrorBoundary>
         <PredictedOrbit 

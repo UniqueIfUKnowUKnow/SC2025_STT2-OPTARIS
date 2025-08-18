@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { geodeticToEcef, lidarSphericalToEcefDelta, ecefToSceneArray, EARTH_RADIUS_KM } from '../utils/geo';
+import * as satellite from 'satellite.js';
 
 // Sofia Tech Park, Bulgaria coordinates
 const SOFIA_TECH_PARK = {
@@ -38,6 +39,15 @@ const useUnifiedStore = create((set, get) => ({
   
   // Satellites
   satellites: {},
+
+  // TLE-based orbit rendering
+  initialTLE: null,           // { tle1, tle2 }
+  newTLE: null,               // { tle1, tle2 }
+  initialSatRec: null,        // satellite.js satrec for initial TLE
+  newSatRec: null,            // satellite.js satrec for new TLE
+
+  // Global trajectory points in scene coords (ECEF -> scene)
+  globalTrajectory: [],       // Array of { pos: [x,y,z], time }
   
   // Ground station location
   groundStation: SOFIA_TECH_PARK,
@@ -47,6 +57,36 @@ const useUnifiedStore = create((set, get) => ({
   updateData: (data) => {
     const currentState = get();
     
+    // Handle TLE updates (flexible field names)
+    const extractTlePair = (obj, prefixCandidates) => {
+      for (const p of prefixCandidates) {
+        const l1 = obj[`${p}tle1`] || obj[`${p}tle_line1`] || obj[`${p}tle_1`] || (obj[p] && (obj[p].tle1 || obj[p].l1));
+        const l2 = obj[`${p}tle2`] || obj[`${p}tle_line2`] || obj[`${p}tle_2`] || (obj[p] && (obj[p].tle2 || obj[p].l2));
+        if (l1 && l2) return { tle1: l1, tle2: l2 };
+      }
+      return null;
+    };
+
+    const initialTle = extractTlePair(data, ['initial_', 'init_', 'initial', 'init']);
+    const newTle = extractTlePair(data, ['new_', 'updated_', 'update_', 'new', 'updated']);
+
+    if (initialTle) {
+      try {
+        const rec = satellite.twoline2satrec(initialTle.tle1, initialTle.tle2);
+        set({ initialTLE: initialTle, initialSatRec: rec });
+      } catch (err) {
+        console.warn('Failed to parse initial TLE:', err);
+      }
+    }
+    if (newTle) {
+      try {
+        const rec = satellite.twoline2satrec(newTle.tle1, newTle.tle2);
+        set({ newTLE: newTle, newSatRec: rec });
+      } catch (err) {
+        console.warn('Failed to parse new TLE:', err);
+      }
+    }
+
     // NEW: Handle the new WebSocket message format from Raspberry Pi
     if (data.state) {
       // New format: { state: "CALIBRATING|SCANNING|DETECTED|FINISHED", payload: {...} }
@@ -164,6 +204,28 @@ const useUnifiedStore = create((set, get) => ({
           time: entry.timestamp || Date.now()
         }));
       }
+
+      // Build global trajectory if points are provided in ECEF
+      let updatedGlobalTrajectory = currentState.globalTrajectory;
+      const rawPoints = data.trajectory_points || data.points || null;
+      if (Array.isArray(rawPoints)) {
+        try {
+          updatedGlobalTrajectory = rawPoints
+            .map(p => {
+              const x = p.x ?? p.X ?? (p.ecef && p.ecef.x);
+              const y = p.y ?? p.Y ?? (p.ecef && p.ecef.y);
+              const z = p.z ?? p.Z ?? (p.ecef && p.ecef.z);
+              const t = p.timestamp ?? p.t ?? Date.now();
+              if ([x, y, z].every(v => typeof v === 'number')) {
+                return { pos: ecefToSceneArray({ x, y, z }, 0.001), time: t };
+              }
+              return null;
+            })
+            .filter(Boolean);
+        } catch (e) {
+          console.warn('Error converting trajectory points:', e);
+        }
+      }
       
       // Convert measured position from LiDAR coordinates to scene coordinates
       let measuredPos = null;
@@ -191,6 +253,7 @@ const useUnifiedStore = create((set, get) => ({
         scannerPosition: scanner_pos || currentState.scannerPosition,
         liveTelemetry: live_telemetry || currentState.liveTelemetry,
         positionHistory: updatedHistory,
+        globalTrajectory: updatedGlobalTrajectory?.length ? updatedGlobalTrajectory : currentState.globalTrajectory,
         predictedOrbitParams: predicted_orbit_params || currentState.predictedOrbitParams,
       });
       
@@ -211,6 +274,27 @@ const useUnifiedStore = create((set, get) => ({
       if (payload.position_history && Array.isArray(payload.position_history)) {
         const now = Date.now();
         updatedHistory = payload.position_history.map(pos => ({ pos, time: now }));
+      }
+
+      // Legacy payload may include ECEF trajectory
+      let updatedGlobalTrajectory = currentState.globalTrajectory;
+      if (Array.isArray(payload.trajectory_points)) {
+        try {
+          updatedGlobalTrajectory = payload.trajectory_points
+            .map(p => {
+              const x = p.x ?? (p.ecef && p.ecef.x);
+              const y = p.y ?? (p.ecef && p.ecef.y);
+              const z = p.z ?? (p.ecef && p.ecef.z);
+              const t = p.timestamp ?? Date.now();
+              if ([x, y, z].every(v => typeof v === 'number')) {
+                return { pos: ecefToSceneArray({ x, y, z }, 0.001), time: t };
+              }
+              return null;
+            })
+            .filter(Boolean);
+        } catch (e) {
+          console.warn('Error converting legacy trajectory points:', e);
+        }
       }
       
       // Convert measured position from LiDAR coordinates to scene coordinates
@@ -239,6 +323,7 @@ const useUnifiedStore = create((set, get) => ({
         scannerPosition: payload.scanner_pos || currentState.scannerPosition,
         liveTelemetry: payload.live_telemetry || currentState.liveTelemetry,
         positionHistory: updatedHistory,
+        globalTrajectory: updatedGlobalTrajectory?.length ? updatedGlobalTrajectory : currentState.globalTrajectory,
         predictedOrbitParams: payload.predicted_orbit_params || currentState.predictedOrbitParams,
       });
     } else if (data.range_m !== undefined) {

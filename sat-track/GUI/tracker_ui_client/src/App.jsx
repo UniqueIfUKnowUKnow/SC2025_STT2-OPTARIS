@@ -82,6 +82,9 @@ function App() {
     positionHistory,          // List of previous positions (for showing movement history)
     predictedOrbitParams,     // Calculated orbital parameters (like orbit shape, size, etc.)
     satellites,               // Information about satellites we're tracking
+    initialSatRec,
+    newSatRec,
+    globalTrajectory,
     updateData,               // Function to update our data when we receive new information
     clearForReset,            // Function to clear all data when resetting the system
     setStatus,                // Function to update the system status
@@ -439,6 +442,9 @@ function App() {
                     predictedOrbitParams={predictedOrbitParams} // Calculated orbit for Optaris
                     status={status}                           // Current system status
                     onGroundStationClick={handleGroundStationClick} // Function to call when ground station is clicked
+                    initialSatRec={initialSatRec}
+                    newSatRec={newSatRec}
+                    globalTrajectory={globalTrajectory}
                   />
                 ) : (
                   // Local View: Shows the LiDAR tracker with scanner beam and target
