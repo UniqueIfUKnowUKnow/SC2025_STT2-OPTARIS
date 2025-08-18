@@ -90,8 +90,6 @@ def main():
     lidar_thread = LidarReader(LIDAR_SERIAL_PORT, LIDAR_BAUD_RATE, lidar_data_queue)
     lidar_thread.start()
 
-    kf = DroneTrajectoryKalman()
-
     tle_data = parse_tle([satellite_name, line1, line2])
     # Push initial TLE to UI for initial orbit
     _safe_push({
@@ -178,22 +176,30 @@ def main():
                 })
                 
                 
-                #Sweeping for points
-                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
-                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3
-                )
+                # #Sweeping for points
+                # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
+                #     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                #     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3
+                # )
+                anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
+                            pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation,
+                            stepper_steps, 0, 3)
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"]+ 10, 10 , stepper_steps)
 
-                if calibration_done:
+                if anomaly_found == True:
+                    anomaly_count += 1
+                    anomaly_found = False
+                    print(anomaly_count)
+                if anomaly_count == 3:
                     current_state = states[2]
 
+            
             elif current_state == "DETECTED":
                 
                 anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
                 first_scan_pos = coords_array[:, :3]
                 first_scan_times = coords_array[:, 3:].flatten()
-                
                 
                 # RESET DIRECTION PIN TO KNOWN STATE BEFORE TRACKING
                 print("Resetting direction pin to known state for tracking...")
@@ -203,39 +209,57 @@ def main():
                 # Convert degrees to radians
                 first_scan_pos_rad = degrees_to_radians(first_scan_pos)
 
-                # Calculate unit vector of plane of best fit
-                n_hat = fit_plane_svd(first_scan_pos_rad)
-
-                # Calculate unit vector for first detected point
-                unit_vector = angles_to_unit(first_scan_pos[0, 1], first_scan_pos[0, 2])
-                unit_vectors = angles_to_unit(first_scan_pos[:, 1], first_scan_pos[:, 2])
+                # Calculate unit vectors and fit plane
+                unit_vectors = angles_to_unit(first_scan_pos_rad[:, 1], first_scan_pos_rad[:, 2])
+                n_hat, _, _ = fit_plane_svd(unit_vectors.T)  # Note: fit_plane_svd expects Nx3 array
                 
-                #C and S bases for phases along the plane
-                cos_base, sin_base =  build_plane_basis(n_hat, unit_vector)
-
-                #Convert measurements into phase along inclined plane
+                # Calculate unit vector for first detected point and build plane basis
+                first_unit_vector = unit_vectors[:, 0]  # First column is first unit vector
+                cos_base, sin_base = build_plane_basis(n_hat, first_unit_vector)
+                
+                # Convert measurements into phase along the plane
                 initial_phases = phase_from_unit(unit_vectors, cos_base, sin_base)
-
-                #Calculate least-square slope
+                
+                # Unwrap phases to handle 2π transitions
+                initial_phases_unwrapped = unwrap_phases(initial_phases)
+                
+                # Calculate least-square slope for initial angular rate
                 t_mean = np.mean(first_scan_times)
-                phase_mean = np.mean(initial_phases)
+                phase_mean = np.mean(initial_phases_unwrapped)
 
-                numerator = np.sum((first_scan_times - t_mean) * (initial_phases - phase_mean))
+                numerator = np.sum((first_scan_times - t_mean) * (initial_phases_unwrapped - phase_mean))
                 denominator = np.sum((first_scan_times - t_mean)**2)
                 
-                angular_speed = numerator / denominator
+                if abs(denominator) < 1e-10:
+                    print("Warning: Cannot estimate angular rate - using default")
+                    angular_speed = 0.1  # Default angular speed (rad/s)
+                else:
+                    angular_speed = numerator / denominator
                 
+                print(f"Initial phase-space tracking setup:")
+                print(f"  Plane normal: n̂ = [{n_hat[0]:.3f}, {n_hat[1]:.3f}, {n_hat[2]:.3f}]")
+                print(f"  Estimated angular speed: Ω = {angular_speed:.4f} rad/s ({np.degrees(angular_speed):.2f} deg/s)")
+                print(f"  Initial phases: {np.degrees(initial_phases_unwrapped)}")
+                
+                # Initialize phase-space α-β filter
+                # State: [phase, phase_rate] in radians and rad/s
                 t_last = first_scan_times[-1]
-
-                #default time step
-                t_step = DT
+                phase_filter = [initial_phases_unwrapped[-1], angular_speed]
                 
-                phase_filter = [initial_phases[-1], angular_speed]
-
+                # Phase-space filter parameters (tuned for phase dynamics)
+                ALPHA_PHASE = 0.4   # Position correction gain
+                BETA_PHASE = 0.15   # Velocity correction gain
+                
                 tracking_iteration = 0
-                max_tracking_iterations = 100  # Safety limit
+                max_tracking_iterations = 100
                 
-                phases.append(initial_phases)
+                # Store tracking history
+                phase_history = list(initial_phases_unwrapped)
+                time_history = list(first_scan_times)
+                
+                print(f"\n=== STARTING PHASE-SPACE TRACKING ===")
+                print(f"Initial filter state: s = {np.degrees(phase_filter[0]):.1f}°, Ω = {np.degrees(phase_filter[1]):.3f} deg/s")
+                
                 while tracking_iteration < max_tracking_iterations:
                     tracking_iteration += 1
                     print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
@@ -247,32 +271,46 @@ def main():
                         except queue.Empty:
                             break
 
-                    t_step = time.time() - t_last
-
-
-                    phase_pred = phase_filter[-1] + phase_filter[1] * t_step
-                    phases.append(phase_pred)
-                    u_pred = cos_base*np.cos(phase_pred) + sin_base*np.sin(phase_pred) 
+                    # PREDICTION STEP (entirely in phase space)
+                    current_time = time.time()
+                    dt = current_time - t_last
+                    
+                    if dt <= 0:
+                        dt = DT  # Use default time step if timing is problematic
+                    
+                    # Predict next phase using constant angular velocity model
+                    phase_pred = phase_filter[0] + phase_filter[1] * dt
+                    phase_rate_pred = phase_filter[1]  # Constant velocity assumption
+                    
+                    print(f"Phase prediction:")
+                    print(f"  Time step: dt = {dt:.3f}s")
+                    print(f"  Predicted phase: s_pred = {np.degrees(phase_pred):.1f}° (unwrapped)")
+                    print(f"  Predicted rate: Ω_pred = {np.degrees(phase_rate_pred):.3f} deg/s")
+                    
+                    # CONVERT PREDICTED PHASE TO AZ/EL FOR POINTING
+                    # Reconstruct 3D unit vector from predicted phase
+                    u_pred = cos_base * np.cos(phase_pred) + sin_base * np.sin(phase_pred)
+                    
+                    # Convert unit vector back to spherical coordinates
                     azi_pred, tilt_pred = unit_to_angles(u_pred)
-
-                    #first scan at predicted area
+                    
+                    print(f"Pointing prediction:")
+                    print(f"  Predicted azimuth: {np.degrees(azi_pred):.1f}°")
+                    print(f"  Predicted elevation: {np.degrees(tilt_pred):.1f}°")
+                    
+                    # MEASUREMENT STEP - scan at predicted location
                     anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
-                                pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
-                                stepper_steps)
+                        pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
+                        stepper_steps)
                     
                     if not anomaly_found:
-                        st_dev_azi = np.sqrt(sigma2_azi)
-                        st_dev_tilt = np.sqrt(sigma2_tilt)
-                        azi_half_width = np.max([W_MIN, KA * st_dev_azi])
-                        tilt_half_width = np.max([W_MIN, KA * st_dev_tilt])
-
-                        print(f"Target not found at predicted location. Expanding search...")
-                        print(f"Search area: Az±{np.degrees(azi_half_width):.1f}°, El±{np.degrees(tilt_half_width):.1f}°")
+                        # Expand search if target not found at prediction
+                        search_radius_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))  # Adaptive search radius
+                        print(f"Target not found at predicted location. Expanding search radius to ±{search_radius_deg:.1f}°")
                         
-                        # Expanded search
                         anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
                             pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
-                            stepper_steps, np.degrees(azi_half_width*2), np.degrees(tilt_half_width*2))
+                            stepper_steps, search_radius_deg*2, search_radius_deg*2)
 
                     if anomaly_found:
                         print(f"TARGET FOUND at Az={anomaly_measured[1]:.1f}°, El={anomaly_measured[2]:.1f}°")
@@ -306,41 +344,92 @@ def main():
                         except Exception as e:
                             print("[WS] DETECTED publish error:", e)
                         
-                        #compute residuals (difference between measurement and prediction)
-                        azi_residual = np.radians(anomaly_measured[1]) - azi_pred
-                        tilt_residual = np.radians(anomaly_measured[2]) - tilt_pred
-
-#WRAP TO PI HERE
-
-                        print(f"Residuals: Az={np.degrees(azi_residual):.2f}°, El={np.degrees(tilt_residual):.2f}°")
+                        # UPDATE STEP (convert measurement to phase space, then update filter)
                         
-                        # Update filter estimates
-                        azi_filter = [azi_pred + ALPHA_THETA * azi_residual, azi_filter[1] + (BETA_THETA/t_step) * azi_residual]
-                        tilt_filter = [tilt_pred + ALPHA_PHI * tilt_residual, tilt_filter[1] + (BETA_PHI/t_step) * tilt_residual]
-
-#WRAP TO PI HERE
+                        # Convert measured az/el to unit vector
+                        azi_meas_rad = np.radians(anomaly_measured[1])
+                        tilt_meas_rad = np.radians(anomaly_measured[2])
+                        u_meas = angles_to_unit(azi_meas_rad, tilt_meas_rad).flatten()
                         
-                        # Update variance estimates
-                        sigma2_azi = LAMBDA * sigma2_azi + ( (1 - LAMBDA) * (azi_residual ** 2) ) + Q_AZI
-                        sigma2_tilt = LAMBDA * sigma2_tilt + ( (1 - LAMBDA) * (tilt_residual ** 2) ) + Q_TILT
+                        # Convert measured unit vector to phase
+                        phase_meas = phase_from_unit(u_meas, cos_base, sin_base)
                         
+                        # Handle phase wrapping - compute residual in wrapped space
+                        phase_residual = wrap_to_pi(phase_meas - wrap_to_pi(phase_pred))
+                        
+                        print(f"Phase measurement and update:")
+                        print(f"  Measured phase: s_meas = {np.degrees(phase_meas):.1f}° (wrapped)")
+                        print(f"  Phase residual: Δs = {np.degrees(phase_residual):.2f}°")
+                        
+                        # α-β filter update in phase space
+                        phase_updated = phase_pred + ALPHA_PHASE * phase_residual
+                        phase_rate_updated = phase_rate_pred + (BETA_PHASE / dt) * phase_residual
+                        
+                        # Store updated filter state
+                        phase_filter = [phase_updated, phase_rate_updated]
                         t_last = anomaly_measured[3]
                         
-                        print(f"Updated estimates: Az={np.degrees(azi_filter[0]):.1f}°, El={np.degrees(tilt_filter[0]):.1f}°")
-                        print(f"Updated velocities: Az_vel={np.degrees(azi_filter[1]):.2f}°/s, El_vel={np.degrees(tilt_filter[1]):.2f}°/s")
+                        # Store for history (unwrap phase for logging)
+                        if phase_history:
+                            # Unwrap relative to last phase in history
+                            last_phase = phase_history[-1]
+                            phase_unwrapped = last_phase + wrap_to_pi(phase_updated - wrap_to_pi(last_phase))
+                        else:
+                            phase_unwrapped = phase_updated
+                            
+                        phase_history.append(phase_unwrapped)
+                        time_history.append(t_last)
+                        
+                        print(f"Filter update:")
+                        print(f"  Updated phase: s = {np.degrees(phase_updated):.1f}° (wrapped)")
+                        print(f"  Updated rate: Ω = {np.degrees(phase_rate_updated):.3f} deg/s")
+                        print(f"  Phase history length: {len(phase_history)}")
                         
                         # Store tracking data for later analysis
                         plot_data.append([anomaly_measured[0], anomaly_measured[1], anomaly_measured[2]])
                         
+                        # Optional: Check for convergence or orbit completion
+                        if len(phase_history) > 10:
+                            phase_span = phase_history[-1] - phase_history[0]
+                            if abs(phase_span) > 2*np.pi:
+                                print(f"Completed one orbit! Phase span: {np.degrees(phase_span):.1f}°")
+                                # Could break here if you want to stop after one orbit
+                        
                     else:
                         print("TARGET LOST - Could not find target in expanded search area")
-                        print("Continuing with prediction-only mode...")
-                        # You might want to expand search further or exit tracking
-                        break
+                        print("Continuing with prediction-only mode for one iteration...")
+                        
+                        # Update time but keep same filter state
+                        t_last = current_time
+                        
+                        # Could implement more sophisticated lost-target handling here:
+                        # - Increase search radius further
+                        # - Reduce confidence in filter
+                        # - Return to scanning mode
+                        # For now, we'll just continue predicting
+                        
+                        if tracking_iteration > 5:  # Don't give up immediately
+                            print("Target lost for too long, exiting tracking mode")
+                            break
                 
-                print("Tracking complete. Saving trajectory data...")
+                print("Phase-space tracking complete. Saving trajectory data...")
                 if plot_data:
                     save_calibration_data(plot_data)
+                
+                # Optional: Save phase history for analysis
+                if len(phase_history) > 1:
+                    phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    phase_filename = f"phase_tracking_{timestamp}.csv"
+                    try:
+                        with open(phase_filename, 'w', newline='') as csvfile:
+                            writer = csv.writer(csvfile)
+                            writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
+                            for row in phase_data:
+                                writer.writerow(row)
+                        print(f"✓ Phase tracking data saved to: {phase_filename}")
+                    except Exception as e:
+                        print(f"✗ Error saving phase data: {e}")
                 
                 
     except KeyboardInterrupt:
