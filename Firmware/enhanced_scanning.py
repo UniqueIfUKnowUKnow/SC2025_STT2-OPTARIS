@@ -39,7 +39,6 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
         start_azimuth, end_azimuth = end_azimuth, start_azimuth
         start_elevation, end_elevation = end_elevation, start_elevation
     
-    print(f"{direction.capitalize()} sweep from ({start_azimuth:.1f}°, {start_elevation:.1f}°) to ({end_azimuth:.1f}°, {end_elevation:.1f}°)")
     
     # Calculate the sweep path using linear interpolation
     # Handle azimuth wrap-around for shortest path
@@ -56,8 +55,6 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
     
     # Normalize azimuth values to 0-360 range
     azimuth_path = azimuth_path % 360
-    
-    print(f"Sweep path calculated: {num_steps} steps, azimuth range: {azimuth_diff:.1f}°, elevation range: {end_elevation - start_elevation:.1f}°")
     
     current_azimuth = start_azimuth
     current_elevation = start_elevation
@@ -83,13 +80,11 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
             reference = get_interpolated_reference_distance(current_azimuth, current_elevation, calibration_data)
             
             difference = distance - (reference * ANOMALY_FACTOR)
-            print(f"Step {i+1}/{num_steps}: Az={current_azimuth:.1f}°, El={current_elevation:.1f}°, Dist={distance:.1f}cm, Diff={difference:.1f}cm")
             
             # Check for anomaly
             if distance < reference * ANOMALY_FACTOR:
                 # Store as [distance, azimuth, elevation, timestamp] quadruplet
                 anomaly_locations.append([distance, current_azimuth, current_elevation, time.time()])
-                print(f"  *** ANOMALY DETECTED: {distance:.1f}cm at ({current_azimuth:.1f}°, {current_elevation:.1f}°), expected: {reference:.1f}cm ***")
                 
             # Check if we have enough anomalies to declare detection
             if len(anomaly_locations) >= 3:
@@ -101,8 +96,6 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
                 anomaly_locations.clear()  # Clear the list for next group    
                 anomaly_count += 1
                 
-                print(f"Anomaly group {anomaly_count} detected: {avg_anomaly}")
-                
                 # Optional: Move to next search area if more detections needed
                 if anomaly_count < detections_required and detections_required > 1:
                     offset_az = current_azimuth + AZIMUTH_AMOUNT
@@ -112,17 +105,17 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
                     
             # Check if we should change state during the sweep
             if anomaly_count >= detections_required:
-                print(f"Detection threshold reached: {anomaly_count}/{detections_required}")
-                return current_azimuth, current_elevation, stepper_steps, anomaly_count, True
+                
+                return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, True
                 
         except queue.Empty:
             continue
         except Exception as e:
-            print(f"Error during sweep step {i}: {e}")
+            
             continue
     
-    print(f"Sweep completed. Final position: ({current_azimuth:.1f}°, {current_elevation:.1f}°)")
-    return current_azimuth, current_elevation, stepper_steps, anomaly_count, False
+    
+    return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, False
 
 
 def perform_arbitrary_scanning_sequence(pi, lidar_data_queue, calibration_data, current_azimuth, 
