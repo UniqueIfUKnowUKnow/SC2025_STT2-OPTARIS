@@ -15,9 +15,9 @@ from tle_processing import parse_tle
 from anomaly_check import get_interpolated_reference_distance
 from scanning import perform_scanning_sequence
 from datetime import datetime
-from kalman_filter import DroneTrajectoryKalman
 from tracking_functions import *
 from zigzag import perform_targeted_scan
+from coordinate_transfer import *
 
 
 # --- Main Application ---
@@ -119,28 +119,15 @@ def main():
                 first_scan_pos = coords_array[:, :3]
                 first_scan_time = coords_array[:, 3:].flatten()
                 
-                print("first scan position in degrees")
-                print(first_scan_pos)
                 
                 # RESET DIRECTION PIN TO KNOWN STATE BEFORE TRACKING
                 print("Resetting direction pin to known state for tracking...")
                 GPIO.output(DIR_PIN, GPIO.HIGH)
                 time.sleep(0.002)  # Allow direction to settle
                 
-                # Convert degrees to radians for Kalman filter
-                for i, pos in enumerate(first_scan_pos):
-                    dist, az_deg, el_deg = pos[0], pos[1], pos[2]
-                    # Convert to radians
-                    az_rad_single = np.radians(az_deg)
-                    el_rad_single = np.radians(el_deg)
-                    
-                    az_rad.append(az_rad_single)
-                    el_rad.append(el_rad_single)
-                    first_scan_pos_rad.append([dist, az_rad_single, el_rad_single])  # Use individual values
-   
-                
-                print("first scan positions in radians")
-                print(first_scan_pos_rad)
+                # Convert degrees to radians
+                first_scan_pos_rad = degrees_to_radians(first_scan_pos)
+
                 #Calculate least-square slope
                 t_mean = np.mean(first_scan_time)
                 theta_mean = np.mean(az_rad)

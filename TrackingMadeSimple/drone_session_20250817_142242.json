@@ -1,0 +1,32 @@
+{
+  "session_info": {
+    "start_time": "2025-08-17T14:21:58.846070",
+    "end_time": "2025-08-17T14:22:42.258525",
+    "total_positions": 1,
+    "search_time": 13.393045663833618,
+    "tracking_time": 0.0004127025604248047,
+    "error_count": 0
+  },
+  "errors": [],
+  "tracked_positions": [
+    {
+      "azimuth": 176.45625,
+      "elevation": 13.535533905932738,
+      "distance": 165.66666666666666,
+      "timestamp": 1755436962.2541292
+    }
+  ],
+  "processed_data": [
+    {
+      "timestamp": "2025-08-17T14:22:42.254129",
+      "position": {
+        "azimuth": 176.45625,
+        "elevation": 13.535533905932738,
+        "distance": 165.66666666666666
+      },
+      "velocity": null,
+      "confidence": 0.5,
+      "status": "lost"
+    }
+  ]
+}

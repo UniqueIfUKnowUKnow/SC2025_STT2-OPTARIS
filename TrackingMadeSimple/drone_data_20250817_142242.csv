@@ -1,0 +1,2 @@
+Timestamp,Azimuth_deg,Elevation_deg,Distance_cm,Azimuth_Velocity_deg_s,Elevation_Velocity_deg_s,Distance_Velocity_cm_s,Confidence,Status,TLE_Name
+2025-08-17T14:22:42.254129,176.46,13.54,165.7,0.000,0.000,0.0,0.500,lost,DRONE_TARGET
