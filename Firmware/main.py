@@ -18,6 +18,7 @@ from datetime import datetime
 from tracking_functions import *
 from zigzag import perform_targeted_scan
 from coordinate_transfer import *
+from enhanced_scanning import *
 
 
 # --- WebSocket Bridge (React UI) ---
@@ -181,11 +182,11 @@ def main():
                 #     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
                 #     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3
                 # )
-                anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
-                            pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation,
-                            stepper_steps, 0, 3)
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"]+ 10, 10 , stepper_steps)
-
+                perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
+                                end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
+                                anomaly_averaged_coords, anomaly_count, detections_required, 
+                                num_steps=50, direction="forward")
+                
                 if anomaly_found == True:
                     anomaly_count += 1
                     anomaly_found = False
