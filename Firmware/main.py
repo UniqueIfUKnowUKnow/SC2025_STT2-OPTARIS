@@ -80,6 +80,7 @@ def main():
     sigma2_tilt = np.radians(3)**2
     cos_base = None
     sin_base = None
+    phases = []
 
     
     try:
@@ -119,7 +120,7 @@ def main():
                 anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
                 first_scan_pos = coords_array[:, :3]
-                first_scan_time = coords_array[:, 3:].flatten()
+                first_scan_times = coords_array[:, 3:].flatten()
                 
                 
                 # RESET DIRECTION PIN TO KNOWN STATE BEFORE TRACKING
@@ -134,41 +135,35 @@ def main():
                 n_hat = fit_plane_svd(first_scan_pos_rad)
 
                 # Calculate unit vector for first detected point
-                unit_vector = angles_to_unit(first_scan_pos[1], first_scan_pos[2])
+                unit_vector = angles_to_unit(first_scan_pos[0, 1], first_scan_pos[0, 2])
+                unit_vectors = angles_to_unit(first_scan_pos[:, 1], first_scan_pos[:, 2])
                 
-
+                #C and S bases for phases along the plane
                 cos_base, sin_base =  build_plane_basis(n_hat, unit_vector)
 
                 #Convert measurements into phase along inclined plane
-                phase = phase_from_unit(unit_vector, cos_base, sin_base)
+                initial_phases = phase_from_unit(unit_vectors, cos_base, sin_base)
 
                 #Calculate least-square slope
-                t_mean = np.mean(first_scan_time)
-                theta_mean = np.mean(az_rad)
-                phi_mean = np.mean(el_rad)
+                t_mean = np.mean(first_scan_times)
+                phase_mean = np.mean(initial_phases)
 
-                numerator = np.sum((first_scan_time - t_mean) * (az_rad - theta_mean))
-                denominator = np.sum((first_scan_time - t_mean)**2)
+                numerator = np.sum((first_scan_times - t_mean) * (initial_phases - phase_mean))
+                denominator = np.sum((first_scan_times - t_mean)**2)
                 
-                w_theta_ini = numerator / denominator
+                angular_speed = numerator / denominator
                 
-                numerator = np.sum((first_scan_time - t_mean) * (el_rad - phi_mean))
-                w_phi_ini = numerator / denominator
-                
-                t_last = first_scan_time[-1]
+                t_last = first_scan_times[-1]
 
                 #default time step
                 t_step = DT
                 
-                azi_filter = [theta_mean, w_theta_ini]
-                tilt_filter = [phi_mean, w_phi_ini]
-                print("initial estimations for velocity")
-                print(f"Azimuth velocity: {w_theta_ini} rad/s ({np.degrees(w_theta_ini):.2f} deg/s)")
-                print(f"Elevation velocity: {w_phi_ini} rad/s ({np.degrees(w_phi_ini):.2f} deg/s)")
-                
+                phase_filter = [initial_phases[-1], angular_speed]
+
                 tracking_iteration = 0
                 max_tracking_iterations = 100  # Safety limit
                 
+                phases.append(initial_phases)
                 while tracking_iteration < max_tracking_iterations:
                     tracking_iteration += 1
                     print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
@@ -182,22 +177,12 @@ def main():
 
                     t_step = time.time() - t_last
 
-                    azi_pred = azi_filter[0] + azi_filter[1] * t_step
-                    tilt_pred = tilt_filter[0] + tilt_filter[1] * t_step
-                    
-                    # Wrap azimuth prediction to 0-2π range
-                    while azi_pred >= 2*np.pi:
-                        azi_pred -= 2*np.pi
-                    while azi_pred < 0:
-                        azi_pred += 2*np.pi
-                    
-                    print(f"Predicted position: Az={np.degrees(azi_pred):.1f}°, El={np.degrees(tilt_pred):.1f}°")
-                    print(f"Time step: {t_step:.3f}s")
-                    
-                    # Debug: Print current stepper position before movement
-                    current_az_debug = (stepper_steps / STEPS_PER_REVOLUTION) * 360.0
-                    print(f"Current stepper position before move: {current_az_debug:.1f}° (steps: {stepper_steps})")
-                    
+
+                    phase_pred = phase_filter[-1] + phase_filter[1] * t_step
+                    phases.append(phase_pred)
+                    u_pred = cos_base*np.cos(phase_pred) + sin_base*np.sin(phase_pred) 
+                    azi_pred, tilt_pred = unit_to_angles(u_pred)
+
                     #first scan at predicted area
                     anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
                                 pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
@@ -223,12 +208,8 @@ def main():
                         #compute residuals (difference between measurement and prediction)
                         azi_residual = np.radians(anomaly_measured[1]) - azi_pred
                         tilt_residual = np.radians(anomaly_measured[2]) - tilt_pred
-                        
-                        # Handle azimuth wrap-around for residual calculation
-                        if azi_residual > np.pi:
-                            azi_residual -= 2*np.pi
-                        elif azi_residual < -np.pi:
-                            azi_residual += 2*np.pi
+
+#WRAP TO PI HERE
 
                         print(f"Residuals: Az={np.degrees(azi_residual):.2f}°, El={np.degrees(tilt_residual):.2f}°")
                         
@@ -236,11 +217,7 @@ def main():
                         azi_filter = [azi_pred + ALPHA_THETA * azi_residual, azi_filter[1] + (BETA_THETA/t_step) * azi_residual]
                         tilt_filter = [tilt_pred + ALPHA_PHI * tilt_residual, tilt_filter[1] + (BETA_PHI/t_step) * tilt_residual]
 
-                        # Wrap azimuth around 2π
-                        if azi_filter[0] > 2*np.pi:
-                            azi_filter[0] -= 2*np.pi
-                        elif azi_filter[0] < 0:
-                            azi_filter[0] += 2*np.pi
+#WRAP TO PI HERE
                         
                         # Update variance estimates
                         sigma2_azi = LAMBDA * sigma2_azi + ( (1 - LAMBDA) * (azi_residual ** 2) ) + Q_AZI

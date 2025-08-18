@@ -70,6 +70,12 @@ def angles_to_unit(theta, phi):
     ce = np.cos(phi)
     return np.array([ce*np.cos(theta), ce*np.sin(theta), np.sin(phi)])
 
+def unit_to_angles(u):
+    theta = np.arctan2(u[1], u[0])  # az
+    phi = np.arcsin(np.clip(u[2], -1.0, 1.0))  # el
+    if theta < 0: theta += 2*np.pi
+    return theta, phi
+
 
 def fit_plane_svd(U):
     """
