@@ -178,19 +178,16 @@ def main():
                 
                 
                 # #Sweeping for points
-                # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
-                #     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                #     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3
-                # )
-                perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
-                                end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
-                                anomaly_averaged_coords, anomaly_count, detections_required, 
-                                num_steps=50, direction="forward")
+                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
+                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3
+                )
+                # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done = perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation,
+                #                 0, 10, stepper_steps, anomaly_locations, 
+                #                 anomaly_averaged_coords, anomaly_count, 3, 
+                #                 num_steps=50, direction="forward")
                 
-                if anomaly_found == True:
-                    anomaly_count += 1
-                    anomaly_found = False
-                    print(anomaly_count)
+
                 if anomaly_count == 3:
                     current_state = states[2]
 
