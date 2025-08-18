@@ -78,6 +78,8 @@ def main():
     anomaly_found = False
     sigma2_azi = np.radians(3)**2
     sigma2_tilt = np.radians(3)**2
+    cos_base = None
+    sin_base = None
 
     
     try:
@@ -128,11 +130,23 @@ def main():
                 # Convert degrees to radians
                 first_scan_pos_rad = degrees_to_radians(first_scan_pos)
 
+                # Calculate unit vector of plane of best fit
+                n_hat = fit_plane_svd(first_scan_pos_rad)
+
+                # Calculate unit vector for first detected point
+                unit_vector = angles_to_unit(first_scan_pos[1], first_scan_pos[2])
+                
+
+                cos_base, sin_base =  build_plane_basis(n_hat, unit_vector)
+
+                #Convert measurements into phase along inclined plane
+                phase = phase_from_unit(unit_vector, cos_base, sin_base)
+
                 #Calculate least-square slope
                 t_mean = np.mean(first_scan_time)
                 theta_mean = np.mean(az_rad)
                 phi_mean = np.mean(el_rad)
-                
+
                 numerator = np.sum((first_scan_time - t_mean) * (az_rad - theta_mean))
                 denominator = np.sum((first_scan_time - t_mean)**2)
                 

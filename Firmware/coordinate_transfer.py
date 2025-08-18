@@ -53,6 +53,20 @@ def degrees_to_radians(dat_array):
 
 #returns unit vectors Ux, Uy, Uz
 def angles_to_unit(theta, phi):
+    """
+    Convert spherical angles to unit vectors.
+    
+    Parameters:
+    theta: array-like, azimuthal angles
+    phi: array-like, polar angles (elevation from xy-plane)
+    
+    Returns:
+    array of shape (3, N) where N is number of input points
+    Each column is [Ux, Uy, Uz] for corresponding theta, phi
+    """
+    theta = np.asarray(theta)
+    phi = np.asarray(phi)
+    
     ce = np.cos(phi)
     return np.array([ce*np.cos(theta), ce*np.sin(theta), np.sin(phi)])
 
@@ -93,10 +107,41 @@ def build_plane_basis(n_hat, u_ref):
 
 
 def phase_from_unit(u, C, S):
-    return np.arctan2(np.dot(u, S), np.dot(u, C))
+    """
+    Calculate phase from unit vectors and reference vectors C, S.
+    
+    Parameters:
+    u: array of shape (3, N) - unit vectors
+    C, S: arrays of shape (3,) or (3, N) - reference vectors
+    
+    Returns:
+    array of phases for each unit vector
+    """
+    u = np.asarray(u)
+    C = np.asarray(C)
+    S = np.asarray(S)
+    
+    # Use np.sum with axis=0 to handle dot products along the vector dimension
+    if u.ndim == 1:
+        # Single vector case
+        return np.arctan2(np.dot(u, S), np.dot(u, C))
+    else:
+        # Multiple vectors case - u should be shape (3, N)
+        if C.ndim == 1:
+            C = C[:, np.newaxis]  # Broadcast C to (3, 1)
+        if S.ndim == 1:
+            S = S[:, np.newaxis]  # Broadcast S to (3, 1)
+        
+        dot_S = np.sum(u * S, axis=0)  # Sum along vector dimension
+        dot_C = np.sum(u * C, axis=0)
+        return np.arctan2(dot_S, dot_C)
 
 def wrap_to_pi(a):
-    return (a + np.pi) % (2*np.pi) - np.pi
+    """
+    Wrap angles to [-π, π] range.
+    Works with scalars or arrays.
+    """
+    return (np.asarray(a) + np.pi) % (2*np.pi) - np.pi
 
 def unwrap_phases(s_list):
     out = [s_list[0]]
