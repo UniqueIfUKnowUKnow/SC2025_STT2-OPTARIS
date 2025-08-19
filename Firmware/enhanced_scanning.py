@@ -98,10 +98,13 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
                 
                 # Optional: Move to next search area if more detections needed
                 if anomaly_count < detections_required and detections_required > 1:
-                    offset_az = current_azimuth + AZIMUTH_AMOUNT
-                    offset_el = current_elevation + TILT_AMOUNT
+                    start_azimuth += AZIMUTH_AMOUNT
+                    end_azimuth += AZIMUTH_AMOUNT
+                    start_elevation += TILT_AMOUNT
+                    end_elevation += TILT_AMOUNT
+
                     current_azimuth, current_elevation, stepper_steps = move_to_polar_position(
-                        pi, offset_az, offset_el, stepper_steps)
+                        pi, (start_azimuth + end_azimuth)/2, (start_elevation+end_elevation)/2, stepper_steps)
                     
             # Check if we should change state during the sweep
             if anomaly_count >= detections_required:

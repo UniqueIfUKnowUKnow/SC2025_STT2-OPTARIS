@@ -30,11 +30,11 @@ SERVO_SWEEP_END = 20
 
 
 # Initial Detection Sweeps Settings
-DEFAULT_CALIBRATION_DISTANCE = 1200  # cm - adjust based on your environment
-SENSOR_MAX = 1200
-ANOMALY_MAX_RADIUS = 5.0 # max degree range in which to average points
+DEFAULT_CALIBRATION_DISTANCE = 1000  # cm - adjust based on your environment
+SENSOR_MAX = 1000
+ANOMALY_MAX_RADIUS = 3.0 # max degree range in which to average points
 SWEEP_RANGE = 10
-ANOMALY_FACTOR = 0.6
+ANOMALY_FACTOR = 0.4
 INITIAL_SWEEP_DETECTIONS_COUNT = 5
 
 
