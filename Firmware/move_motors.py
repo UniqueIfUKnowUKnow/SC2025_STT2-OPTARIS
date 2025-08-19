@@ -94,19 +94,19 @@ def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0):
 
 def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth_steps=0):
 
-    print(f"Moving to polar coordinates: Az={target_azimuth:.1f}°, El={target_elevation:.1f}°")
+    #print(f"Moving to polar coordinates: Az={target_azimuth:.1f}°, El={target_elevation:.1f}°")
     
     # --- ELEVATION CONTROL (SERVO) ---
     # Check if elevation is within servo limits and clamp if necessary
     if target_elevation < 0 or target_elevation > 180:
-        print(f"Warning: Target elevation {target_elevation:.1f}° is outside servo range "
-              f"({0}°-{180}°)")
+        # print(f"Warning: Target elevation {target_elevation:.1f}° is outside servo range "
+        #       f"({0}°-{180}°)")
         target_elevation = max(0, min(180, target_elevation))
-        print(f"Clamped elevation to: {target_elevation:.1f}°")
+        # print(f"Clamped elevation to: {target_elevation:.1f}°")
     
     # Move servo to target elevation
     set_servo_angle(pi, target_elevation)
-    print(f"Servo moved to elevation: {target_elevation:.1f}°")
+    # print(f"Servo moved to elevation: {target_elevation:.1f}°")
     
     # --- AZIMUTH CONTROL (STEPPER) ---
     # Normalize target azimuth to 0-360 range
@@ -114,7 +114,7 @@ def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth
     
     # Convert current steps to current azimuth for debugging
     current_azimuth = (current_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
-    print(f"Current position: Az={current_azimuth:.1f}° (steps: {current_azimuth_steps})")
+    # print(f"Current position: Az={current_azimuth:.1f}° (steps: {current_azimuth_steps})")
     
     # Convert target azimuth to steps
     target_steps = int((target_azimuth / 360.0) * STEPS_PER_REVOLUTION)
@@ -129,7 +129,7 @@ def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth
         else:
             steps_to_move += STEPS_PER_REVOLUTION
     
-    print(f"Steps calculation: target_steps={target_steps}, current_steps={current_azimuth_steps}, steps_to_move={steps_to_move}")
+    # print(f"Steps calculation: target_steps={target_steps}, current_steps={current_azimuth_steps}, steps_to_move={steps_to_move}")
     
     # Move stepper motor if movement is needed
     if steps_to_move != 0:
@@ -137,17 +137,17 @@ def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth
         if steps_to_move > 0:
             GPIO.output(DIR_PIN, GPIO.HIGH)  # Clockwise
             direction = "CW"
-            print(f"Setting direction: CLOCKWISE (HIGH)")
+            # print(f"Setting direction: CLOCKWISE (HIGH)")
         else:
             GPIO.output(DIR_PIN, GPIO.LOW)   # Counter-clockwise
             direction = "CCW"
-            print(f"Setting direction: COUNTER-CLOCKWISE (LOW)")
+            # print(f"Setting direction: COUNTER-CLOCKWISE (LOW)")
         
         # CRITICAL: Add delay after direction change to ensure it takes effect
         time.sleep(0.002)  # Increased delay for DRV8825 setup time
         
-        print(f"Moving stepper {abs(steps_to_move)} steps {direction} "
-              f"(from {current_azimuth_steps} to target {target_steps})")
+        # print(f"Moving stepper {abs(steps_to_move)} steps {direction} "
+        #       f"(from {current_azimuth_steps} to target {target_steps})")
         
         # Execute steps
         for step in range(abs(steps_to_move)):
@@ -166,13 +166,13 @@ def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth
         # Calculate actual azimuth achieved
         actual_azimuth = (new_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
         
-        print(f"Stepper moved to azimuth: {actual_azimuth:.1f}° (steps: {new_azimuth_steps})")
+        # print(f"Stepper moved to azimuth: {actual_azimuth:.1f}° (steps: {new_azimuth_steps})")
         
     else:
         new_azimuth_steps = current_azimuth_steps
         actual_azimuth = (current_azimuth_steps / STEPS_PER_REVOLUTION) * 360.0
-        print("No stepper movement needed - already at target azimuth")
+        # print("No stepper movement needed - already at target azimuth")
     
-    print(f"Movement complete: Az={actual_azimuth:.1f}°, El={target_elevation:.1f}°")
+    # print(f"Movement complete: Az={actual_azimuth:.1f}°, El={target_elevation:.1f}°")
     
     return actual_azimuth, target_elevation, new_azimuth_steps

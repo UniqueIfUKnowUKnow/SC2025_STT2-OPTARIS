@@ -316,24 +316,48 @@ def main():
                     print(f"  Predicted azimuth: {np.degrees(azi_pred):.1f}°")
                     print(f"  Predicted elevation: {np.degrees(tilt_pred):.1f}°")
                     
+                    # Expand search if target not found at prediction with individual ranges
+                    base_search_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))
+                    azimuth_range = base_search_deg * 1.5  #  azimuth search
+                    elevation_range = base_search_deg * 2.0  #  elevation search
+                    
+                    print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
+                    
+                    # Calculate search area bounds
+                    start_azimuth = np.degrees(azi_pred) - azimuth_range/2
+                    end_azimuth = np.degrees(azi_pred) + azimuth_range/2
+                    start_elevation = np.degrees(tilt_pred) - elevation_range/2
+                    end_elevation = np.degrees(tilt_pred) + elevation_range/2
+
                     # MEASUREMENT STEP - scan at predicted location
                     # anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
                     #     pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
                     #     stepper_steps)
-                    anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps, anomaly_count  = perform_point_to_point_sweep(
-                    pi, lidar_data_queue, calibration_data, 5, 10,
-                    20, 20, stepper_steps, anomaly_locations, 
-                    anomaly_averaged_coords, anomaly_count, detections_required, 
-                    num_steps=3, direction="forward")
+                    anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps, anomaly_count = perform_point_to_point_sweep(
+                            pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
+                            end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
+                            anomaly_averaged_coords, anomaly_count, detections_required, 
+                            num_steps=10, direction="forward")
                     
                     if not anomaly_found:
-                        # Expand search if target not found at prediction
-                        search_radius_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))  # Adaptive search radius
-                        print(f"Target not found at predicted location. Expanding search radius to ±{search_radius_deg:.1f}°")
+                        # Expand search if target not found at prediction with individual ranges
+                        base_search_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))
+                        azimuth_range = base_search_deg * 1.5  #  azimuth search
+                        elevation_range = base_search_deg * 2.0  #  elevation search
                         
-                        anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
-                            pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
-                            stepper_steps, search_radius_deg*2, search_radius_deg*2)
+                        print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
+                        
+                        # Calculate search area bounds
+                        start_azimuth = np.degrees(azi_pred) - azimuth_range/2
+                        end_azimuth = np.degrees(azi_pred) + azimuth_range/2
+                        start_elevation = np.degrees(tilt_pred) - elevation_range/2
+                        end_elevation = np.degrees(tilt_pred) + elevation_range/2
+                        
+                        anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps, anomaly_count = perform_point_to_point_sweep(
+                            pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
+                            end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
+                            anomaly_averaged_coords, anomaly_count, detections_required, 
+                            num_steps=10, direction="forward")
 
                     if anomaly_found:
                         print(f"TARGET FOUND at Az={anomaly_measured[1]:.1f}°, El={anomaly_measured[2]:.1f}°")
