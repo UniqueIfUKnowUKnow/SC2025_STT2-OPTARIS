@@ -10,7 +10,6 @@ import Starfield from './Starfield';
 import './OrbitTracker.css';
 import SensorWebSocket from '../services/SensorWebSocket';
 import { geodeticToEcef, lidarSphericalToEcefDelta, ecefToSceneArray, EARTH_RADIUS_KM } from '../utils/geo';
-import { KalmanCV3D } from '../utils/kalman';
 import { Html } from '@react-three/drei';
 
 // TLE Data for ISS (International Space Station) - faster orbit, ~90 minute period
@@ -202,41 +201,6 @@ const MeasuredPath = ({ positions }) => {
   );
 };
 
-// Hexagon marker component for manual points (NASA Eyes style)
-const HexagonMarker = ({ position, color, size = 0.2 }) => {
-  if (!position) return null;
-  
-  return (
-    <group position={position}>
-      {/* Main hexagon plate - flat and thin like NASA Eyes */}
-      <mesh>
-        <cylinderGeometry args={[size, size, size * 0.05, 6]} />
-        <meshStandardMaterial 
-          color={color} 
-          emissive={color} 
-          emissiveIntensity={0.4}
-          transparent
-          opacity={0.95}
-          metalness={0.3}
-          roughness={0.2}
-        />
-      </mesh>
-      
-      {/* Border ring for better visibility */}
-      <mesh>
-        <ringGeometry args={[size * 0.9, size, 6]} />
-        <meshStandardMaterial 
-          color="#ffffff" 
-          emissive="#ffffff" 
-          emissiveIntensity={0.2}
-          transparent
-          opacity={0.8}
-        />
-      </mesh>
-    </group>
-  );
-};
-
 // Multiple satellite TLEs for comprehensive tracking
 const SATELLITE_TLES = {
   'ISS': {
@@ -419,26 +383,6 @@ const Scene3D = ({
         {/* Measured path trail */}
         <MeasuredPath positions={measuredPositions} />
         
-        {/* Manual points */}
-        {manualPointsScene?.map((p, idx) => (
-          <HexagonMarker key={`manual-${idx}`} position={p} color="#ffd54f" size={0.08} />
-        ))}
-        
-        {/* Kalman predicted path (cyan) */}
-        {kfPredictedPath && kfPredictedPath.length > 1 && (
-          <line>
-            <bufferGeometry>
-              <bufferAttribute
-                attach="attributes-position"
-                count={kfPredictedPath.length}
-                array={new Float32Array(kfPredictedPath.flatMap(p => [p[0], p[1], p[2]]))}
-                itemSize={3}
-              />
-            </bufferGeometry>
-            <lineBasicMaterial color="#00e5ff" opacity={0.9} transparent linewidth={2} />
-          </line>
-        )}
-        
         <OrbitControls 
           enablePan={true}
           enableZoom={true}
@@ -499,16 +443,6 @@ const ControlPanel = ({
   tle2,
   onTleChange,
   onApplyTle,
-  manualForm,
-  onManualFormChange,
-  onAddManualPoint,
-  manualPoints,
-  onRemoveManualPoint,
-  onClearManualPoints,
-  kfEnabled,
-  kfHorizonSec,
-  onKfEnabledChange,
-  onKfHorizonChange,
   predictedPosition, 
   measuredPosition, 
   onClearMeasuredPath 
@@ -572,39 +506,6 @@ const ControlPanel = ({
         <button className="clear-button" onClick={onApplyTle}>Apply TLE</button>
       </div>
 
-      <div className="info-box">
-        <h3>Manual Points</h3>
-        <div className="info-item"><label>X (km):</label><input type="number" step="0.001" value={manualForm.x} onChange={(e)=>onManualFormChange({ x: e.target.value })} /></div>
-        <div className="info-item"><label>Y (km):</label><input type="number" step="0.001" value={manualForm.y} onChange={(e)=>onManualFormChange({ y: e.target.value })} /></div>
-        <div className="info-item"><label>Z (km):</label><input type="number" step="0.001" value={manualForm.z} onChange={(e)=>onManualFormChange({ z: e.target.value })} /></div>
-        <div className="info-item"><label>Label:</label><input value={manualForm.label} onChange={(e)=>onManualFormChange({ label: e.target.value })} /></div>
-        <button className="clear-button" onClick={onAddManualPoint}>Add Point</button>
-        <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 8 }}>
-          {manualPoints.length === 0 ? (
-            <div style={{ opacity: 0.7 }}>No manual points</div>
-          ) : (
-            manualPoints.map((p, i) => (
-              <div key={`p-${i}`} className="info-item" style={{ alignItems: 'center' }}>
-                <span style={{ flex: 1 }}>
-                  {(p.x).toFixed(3)}, {(p.y).toFixed(3)}, {(p.z).toFixed(3)} km {p.label ? `- ${p.label}` : ''}
-                </span>
-                <button className="clear-button" onClick={() => onRemoveManualPoint(i)}>X</button>
-              </div>
-            ))
-          )}
-        </div>
-        <button className="clear-button" onClick={onClearManualPoints}>Clear Manual Points</button>
-      </div>
-
-      <div className="info-box">
-        <h3>Kalman Prediction</h3>
-        <div className="info-item">
-          <label>Enable:</label>
-          <input type="checkbox" checked={kfEnabled} onChange={(e)=>onKfEnabledChange(e.target.checked)} />
-        </div>
-        <span>Automatically predicts trajectory from last 3 measured points. Shows cyan line extending 10 seconds into future.</span>
-      </div>
-
       <button 
         className="clear-button"
         onClick={onClearMeasuredPath}
@@ -631,16 +532,7 @@ const OrbitTracker = () => {
     l1: TLE_LINE1,
     l2: TLE_LINE2,
   });
-  const [manualForm, setManualForm] = useState({ x: '', y: '', z: '', label: '' });
-  const [manualPoints, setManualPoints] = useState([
-    // Pre-populate with 3 test points representing satellite positions
-    { x: 0, y: 0, z: 6371, label: 'Start' },
-    { x: 200.0, y: 120.0, z: 6371.8, label: 'Mid' },
-    { x: 400.0, y: 240.0, z: 6372.6, label: 'Current' }
-  ]); // [{x, y, z, label}]
-  const [kfEnabled, setKfEnabled] = useState(true); // Auto-enable
-  const [kfPredictedPath, setKfPredictedPath] = useState([]);
-  const kfRef = useRef(null);
+  // Removed manual points and Kalman filter state
   const [satellites, setSatellites] = useState({});
 
   // Initialize multiple satellites from TLEs
@@ -764,71 +656,7 @@ const OrbitTracker = () => {
     setMeasuredPosition(null);
   };
 
-  const onManualFormChange = (partial) => {
-    setManualForm(prev => ({ ...prev, ...partial }));
-  };
-
-  const onAddManualPoint = () => {
-    const x = parseFloat(manualForm.x);
-    const y = parseFloat(manualForm.y);
-    const z = parseFloat(manualForm.z);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return;
-    setManualPoints(prev => [...prev, { x, y, z, label: manualForm.label?.trim() || '' }]);
-  };
-
-  const onRemoveManualPoint = (idx) => {
-    setManualPoints(prev => prev.filter((_, i) => i !== idx));
-  };
-
-  const onClearManualPoints = () => setManualPoints([]);
-
-  const manualPointsScene = useMemo(() => {
-    return manualPoints.map(p => {
-      // Convert from km to scene coordinates
-      return [p.x * SCALE_FACTOR, p.z * SCALE_FACTOR, -p.y * SCALE_FACTOR];
-    });
-  }, [manualPoints]);
-
-  // Kalman filter: automatically start working with 3+ points
-  useEffect(() => {
-    // Need at least 3 measured points to estimate velocity
-    if (!measuredPositions || measuredPositions.length < 3) {
-      setKfPredictedPath([]);
-      return;
-    }
-    const pts = measuredPositions.slice(-3);
-    // Estimate velocity using last two deltas; assume ~100ms between updates as used in update loop
-    const dt = 0.1; // 100 ms
-    const v1 = [
-      (pts[1][0] - pts[0][0]) / dt,
-      (pts[1][1] - pts[0][1]) / dt,
-      (pts[1][2] - pts[0][2]) / dt,
-    ];
-    const v2 = [
-      (pts[2][0] - pts[1][0]) / dt,
-      (pts[2][1] - pts[1][1]) / dt,
-      (pts[2][2] - pts[1][2]) / dt,
-    ];
-    const v = [
-      (v1[0] + v2[0]) / 2,
-      (v1[1] + v2[1]) / 2,
-      (v1[2] + v2[2]) / 2,
-    ];
-    if (!kfRef.current) kfRef.current = new KalmanCV3D({ processNoise: 1e-4, measurementNoise: 5e-4 });
-    kfRef.current.initialize({ position: pts[2], velocity: v });
-    // Predict forward for fixed 10 seconds
-    const horizon = 10; // seconds
-    const step = 0.2; // seconds per step for line resolution
-    const predicted = [];
-    let time = 0;
-    while (time <= horizon) {
-      kfRef.current.predict(step);
-      const state = kfRef.current.x; // 6x1
-      predicted.push([state[0][0], state[1][0], state[2][0]]);
-      time += step;
-    }
-    setKfPredictedPath(predicted);
-  }, [measuredPositions]);
+  // Removed manual points and Kalman filter related code
 
   return (
     <div className="orbit-tracker">
@@ -851,14 +679,6 @@ const OrbitTracker = () => {
           tle2={tle.l2}
           onTleChange={onTleChange}
           onApplyTle={onApplyTle}
-          manualForm={manualForm}
-          onManualFormChange={onManualFormChange}
-          onAddManualPoint={onAddManualPoint}
-          manualPoints={manualPoints}
-          onRemoveManualPoint={onRemoveManualPoint}
-          onClearManualPoints={onClearManualPoints}
-          kfEnabled={kfEnabled}
-          onKfEnabledChange={setKfEnabled}
           predictedPosition={predictedPosition}
           measuredPosition={measuredPosition}
           onClearMeasuredPath={clearMeasuredPath}
@@ -870,8 +690,6 @@ const OrbitTracker = () => {
           measuredPositions={measuredPositions}
           satelliteRec={satelliteObj}
           currentTime={currentTime}
-          manualPointsScene={manualPointsScene}
-          kfPredictedPath={kfPredictedPath}
           satellites={satellites}
         />
       </div>
