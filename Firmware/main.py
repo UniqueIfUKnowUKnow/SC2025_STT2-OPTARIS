@@ -281,9 +281,7 @@ def main():
                 t_last = first_scan_times[-1]
                 phase_filter = [initial_phases_unwrapped[-1], angular_speed]
                 
-                # Phase-space filter parameters (tuned for phase dynamics)
-                ALPHA_PHASE = 0.4   # Position correction gain
-                BETA_PHASE = 0.15   # Velocity correction gain
+
                 
                 tracking_iteration = 0
                 max_tracking_iterations = 100
@@ -309,9 +307,8 @@ def main():
                     # PREDICTION STEP (entirely in phase space)
                     current_time = time.time()
                     dt = current_time - t_last
-                    
-                    if dt <= 0:
-                        dt = DT  # Use default time step if timing is problematic
+                    if dt <= 0 or dt < 0.1:  # Minimum 100ms between updates
+                        dt = 0.05  # Use reasonable default
                     
                     # Predict next phase using constant angular velocity model
                     phase_pred = phase_filter[0] + phase_filter[1] * dt
@@ -425,7 +422,7 @@ def main():
                         phase_meas = phase_from_unit(u_meas, cos_base, sin_base)
                         
                         # Handle phase wrapping - compute residual in wrapped space
-                        phase_residual = wrap_to_pi(phase_meas - wrap_to_pi(phase_pred))
+                        phase_residual = wrap_to_pi(phase_meas - phase_pred)
                         
                         print(f"Phase measurement and update:")
                         print(f"  Measured phase: s_meas = {np.degrees(phase_meas):.1f}° (wrapped)")

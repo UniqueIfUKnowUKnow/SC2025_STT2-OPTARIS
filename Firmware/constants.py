@@ -43,12 +43,7 @@ DT = 1
 KALMAN_ERROR_RANGE = 1
 START_TIME = 0
 
-#Azimuth
-ALPHA_THETA = 0.5
-BETA_THETA = 0.2
-# Elevation
-ALPHA_PHI = 0.4
-BETA_PHI = 0.15
+
 #Residual smoothing (uncertainty; EWMA factor) 
 LAMBDA = 0.95 
 #Process floor for variance (convert to radians²)
@@ -65,6 +60,9 @@ W_THETA_MAX = np.radians(170)
 W_PHI_MAX = np.radians(60)
 #Time step
 DT = 0.5
+# Phase-space filter parameters (tuned for phase dynamics)
+ALPHA_PHASE = 0.2   # Position correction gain
+BETA_PHASE = 0.05   # Velocity correction gain
 
 # Test TLE
 satellite_name = "ISS (ZARYA)"
