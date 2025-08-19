@@ -197,11 +197,11 @@ def main():
                 })
                 
                 detections_required = 7
-                # # #Sweeping for points
-                # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
-                #     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                #     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, detections_required
-                # )
+                # #Sweeping for points
+                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
+                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, detections_required
+                )
                 
                 # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
                 #     pi, lidar_data_queue, calibration_data,  start_azimuth, start_elevation,
@@ -209,10 +209,10 @@ def main():
                 #     anomaly_averaged_coords, anomaly_count, detections_required, 
                 #     num_steps=10, direction="forward")
 
-                current_azimuth, current_elevation, stepper_steps, anomaly, anomaly_found = perform_continuous_servo_scan(
-                pi, lidar_data_queue, calibration_data, 
-                current_azimuth, current_elevation, stepper_steps,
-                tilt_max=20, tilt_min=5, scan_duration=10.0, servo_speed=2.0)
+                # current_azimuth, current_elevation, stepper_steps, anomaly, anomaly_found = perform_continuous_servo_scan(
+                # pi, lidar_data_queue, calibration_data, 
+                # current_azimuth, current_elevation, stepper_steps,
+                # tilt_max=20, tilt_min=5)
 
                 # Optional: Move to next search area if more detections needed
                 if anomaly_found == True:

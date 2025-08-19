@@ -1,5 +1,4 @@
 from constants import *
-from coordinate_transfer import xyz_to_polar
 import RPi.GPIO as GPIO  # For direct control of stepper motor GPIO pins
 import time
 
