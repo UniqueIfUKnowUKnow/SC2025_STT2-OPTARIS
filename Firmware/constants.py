@@ -1,6 +1,7 @@
 # constants.py
 # All constant definitions for the LiDAR scanning system
 import numpy as np
+
 # --- Pin & Port Configuration (BCM numbering) ---
 DIR_PIN    = 26
 STEP_PIN   = 13
@@ -9,9 +10,8 @@ RESET_PIN  = 19
 M0_PIN     = 0
 M1_PIN     = 5
 M2_PIN     = 6
-
 SERVO_PIN  = 2
-
+# LiDAR config
 LIDAR_SERIAL_PORT = '/dev/ttyS0'
 LIDAR_BAUD_RATE = 115200
 
@@ -20,7 +20,6 @@ STEPS_PER_REVOLUTION = 6400
 STEPPER_PULSE_DELAY = 0.0001
 MIN_PULSE_WIDTH = 500
 MAX_PULSE_WIDTH = 2500
-SERVO_UPDATE_INTERVAL = 0.01
 
 # Stepper and Servo Sweep Settings
 STEPPER_SWEEP_DEGREES = 360
@@ -35,31 +34,13 @@ SENSOR_MAX = 1000
 ANOMALY_MAX_RADIUS = 3.0 # max degree range in which to average points
 SWEEP_RANGE = 10
 ANOMALY_FACTOR = 0.7
-INITIAL_SWEEP_DETECTIONS_COUNT = 5
 
 
 # Tracking Prediction Settings
-DT = 1
-KALMAN_ERROR_RANGE = 1
-START_TIME = 0
 
-
-#Residual smoothing (uncertainty; EWMA factor) 
-LAMBDA = 0.95 
-#Process floor for variance (convert to radians²)
-Q_AZI = (np.radians(0.2))**2
-Q_TILT = (np.radians(0.2))**2 
-#Scan sizing (≈99% capture if residuals are Gaussian) 
-KA = 2.5 
-#Minimum half-width of scan (≥ half of 2° FoV) 
-W_MIN = np.radians(1.25) 
-#Scan step  (≤ 1° to guarantee FoV overlap)
-STEP_DEG = np.radians(1.0)
-#Velocity caps (safety): 
-W_THETA_MAX = np.radians(170) 
-W_PHI_MAX = np.radians(60)
 #Time step
 DT = 0.5
+
 # Phase-space filter parameters (tuned for phase dynamics)
 ALPHA_PHASE = 0.2   # Position correction gain
 BETA_PHASE = 0.05   # Velocity correction gain

@@ -39,59 +39,6 @@ def reset_stepper_pos(stepper_steps_taken):
     stepper_steps_taken = 0
     print("Stepper pos reset and dir pin set to HIGH")
 
-
-def move_to_xyz_position(pi, x, y, z, current_azimuth_steps=0):
-
-    # Convert to polar coordinates
-    target_azimuth, target_elevation, distance = xyz_to_polar(x, y, z)
-    
-    # Check if elevation is within servo limits
-    if target_elevation < SERVO_SWEEP_START or target_elevation > SERVO_SWEEP_END:
-        print(f"Warning: Target elevation {target_elevation:.1f}° is outside servo range "
-              f"({SERVO_SWEEP_START}°-{SERVO_SWEEP_END}°)")
-        target_elevation = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, target_elevation))
-        print(f"Clamped elevation to: {target_elevation:.1f}°")
-    
-    
-    # Calculate stepper movement
-    # Convert target azimuth to steps
-    target_steps = int((target_azimuth / 360.0) * STEPS_PER_REVOLUTION)
-    steps_to_move = target_steps - current_azimuth_steps
-    
-    # Handle wrap-around for shortest path
-    if abs(steps_to_move) > STEPS_PER_REVOLUTION // 2:
-        if steps_to_move > 0:
-            steps_to_move -= STEPS_PER_REVOLUTION
-        else:
-            steps_to_move += STEPS_PER_REVOLUTION
-    
-    # Move stepper motor
-    if steps_to_move != 0:
-        # Set direction with proper delay
-        if steps_to_move > 0:
-            GPIO.output(DIR_PIN, GPIO.HIGH)  # Clockwise
-            direction = "CW"
-        else:
-            GPIO.output(DIR_PIN, GPIO.LOW)   # Counter-clockwise
-            direction = "CCW"
-        
-        # Critical: Add delay after direction change
-        time.sleep(0.001)
-        
-        # Execute steps
-        for _ in range(abs(steps_to_move)):
-            stepper_step()
-        
-        # Update position
-        new_azimuth_steps = current_azimuth_steps + steps_to_move
-        
-        # Keep steps in valid range
-        new_azimuth_steps = new_azimuth_steps % STEPS_PER_REVOLUTION
-    else:
-        new_azimuth_steps = current_azimuth_steps
-            
-    return new_azimuth_steps, target_azimuth, target_elevation, distance
-
 def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth_steps=0):
 
     #print(f"Moving to polar coordinates: Az={target_azimuth:.1f}°, El={target_elevation:.1f}°")

@@ -11,7 +11,6 @@ from move_motors import *
 from datetime import datetime
 
 
-
 def calibrate_environment(pi, lidar_data_queue):
     """
     Performs systematic calibration by sweeping stepper motor through 180 degrees,

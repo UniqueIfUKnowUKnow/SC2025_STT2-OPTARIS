@@ -12,13 +12,10 @@ from stepper_setup import setup_stepper_gpio
 from move_motors import *
 from calibration import *
 from tle_processing import parse_tle
-from anomaly_check import get_interpolated_reference_distance
-from scanning import perform_scanning_sequence
+from scanning import *
 from datetime import datetime
-from tracking_functions import *
 from zigzag import perform_targeted_scan
 from coordinate_transfer import *
-from enhanced_scanning import *
 
 
 # --- WebSocket Bridge (React UI) ---
@@ -77,6 +74,7 @@ def main():
     # --- Setup ---
     _start_ws_server_in_thread()
     setup_stepper_gpio()
+
     pi = pigpio.pi()
     if not pi.connected:
         print("Could not connect to pigpio daemon. Is it running?")
@@ -138,7 +136,7 @@ def main():
     global_traj = []
 
     start_azimuth = 0
-    start_elevation = 10
+    start_elevation = 0
     end_azimuth = 0
     end_elevation = 20
 
@@ -180,6 +178,7 @@ def main():
 
                 # Moving to right of ascending node
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
+                scan_tilt = current_elevation
 
                 calibration_done = True
                 if calibration_done:
@@ -204,24 +203,33 @@ def main():
                 #     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, detections_required
                 # )
                 
-                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
-                    pi, lidar_data_queue, calibration_data,  start_azimuth, start_elevation,
-                                end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
-                    anomaly_averaged_coords, anomaly_count, detections_required, 
-                    num_steps=10, direction="forward")
-                print(start_azimuth, end_azimuth, start_elevation, end_elevation)
-                                # Optional: Move to next search area if more detections needed
-                if scanning_done == True:
-                     # Clear LiDAR queue before starting
+                # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
+                #     pi, lidar_data_queue, calibration_data,  start_azimuth, start_elevation,
+                #                 end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
+                #     anomaly_averaged_coords, anomaly_count, detections_required, 
+                #     num_steps=10, direction="forward")
+
+                current_azimuth, current_elevation, stepper_steps, anomaly, anomaly_found = perform_continuous_servo_scan(
+                pi, lidar_data_queue, calibration_data, 
+                current_azimuth, current_elevation, stepper_steps,
+                tilt_max=20, tilt_min=5, scan_duration=10.0, servo_speed=2.0)
+
+                # Optional: Move to next search area if more detections needed
+                if anomaly_found == True:
+                    
+                    anomaly_averaged_coords.append(anomaly)
+                    anomaly_count += 1
+                    # Move motors along trajectory
+                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10, scan_tilt , stepper_steps)
+
+                    # Clear LiDAR queue before starting
                     while not lidar_data_queue.empty():
                         try:
                             lidar_data_queue.get_nowait()
                         except queue.Empty:
                             break
-                    scanning_done = False
+                    anomaly_found = False
                     
-                
-
                 print(anomaly_count)
                 print(anomaly_averaged_coords)
                 if anomaly_count >= detections_required:
