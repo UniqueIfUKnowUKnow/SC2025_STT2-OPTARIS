@@ -70,7 +70,7 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
         )
         
         # Small delay for smooth motion and LiDAR reading
-        time.sleep(0.05)  # Adjust for desired sweep speed
+        # Adjust for desired sweep speed
         
         # Get LiDAR reading and process
         try:
@@ -95,7 +95,14 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
                 
                 anomaly_locations.clear()  # Clear the list for next group    
                 anomaly_count += 1
-                
+
+                 # Clear LiDAR queue before starting
+                while not lidar_data_queue.empty():
+                    try:
+                        lidar_data_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                time.sleep(0.01)
                 # Optional: Move to next search area if more detections needed
                 if anomaly_count < detections_required and detections_required > 1:
                     start_azimuth += AZIMUTH_AMOUNT
@@ -109,7 +116,7 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
             # Check if we should change state during the sweep
             if anomaly_count >= detections_required:
                 
-                return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, True
+                return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, True, start_azimuth, end_azimuth, start_elevation, end_elevation
                 
         except queue.Empty:
             continue
@@ -118,7 +125,7 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
             continue
     
     
-    return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, False
+    return current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, False, start_azimuth, end_azimuth, start_elevation, end_elevation
 
 
 def perform_arbitrary_scanning_sequence(pi, lidar_data_queue, calibration_data, current_azimuth, 

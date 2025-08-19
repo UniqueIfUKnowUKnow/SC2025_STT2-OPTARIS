@@ -137,9 +137,9 @@ def main():
     # Global trajectory buffer for UI (ECEF km)
     global_traj = []
 
-    start_azimuth = 5
+    start_azimuth = 0
     start_elevation = 10
-    end_azimuth =20
+    end_azimuth = 0
     end_elevation = 20
 
     
@@ -204,12 +204,12 @@ def main():
                 #     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, detections_required
                 # )
                 
-                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done = perform_point_to_point_sweep(
+                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
                     pi, lidar_data_queue, calibration_data,  start_azimuth, start_elevation,
                                 end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
                     anomaly_averaged_coords, anomaly_count, detections_required, 
                     num_steps=10, direction="forward")
-                
+                print(start_azimuth, end_azimuth, start_elevation, end_elevation)
                                 # Optional: Move to next search area if more detections needed
                 if scanning_done == True:
                      # Clear LiDAR queue before starting
@@ -350,7 +350,7 @@ def main():
                     # anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
                     #     pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
                     #     stepper_steps)
-                    current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found = perform_point_to_point_sweep(
+                    current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
                             pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                             end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
                             anomaly_averaged_coords, anomaly_count, detections_required, 
@@ -373,7 +373,7 @@ def main():
                         start_elevation = np.degrees(tilt_pred) - elevation_range/2
                         end_elevation = np.degrees(tilt_pred) + elevation_range/2
                         
-                        current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found = perform_point_to_point_sweep(
+                        current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
                             pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                             end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
                             anomaly_averaged_coords, anomaly_count, detections_required, 
