@@ -237,7 +237,7 @@ def main():
                 first_scan_times = coords_array[:, 3:].flatten()
                 
                 # RESET DIRECTION PIN TO KNOWN STATE BEFORE TRACKING
-                print("Resetting direction pin to known state for tracking...")
+                # print("Resetting direction pin to known state for tracking...")
                 GPIO.output(DIR_PIN, GPIO.HIGH)
                 time.sleep(0.002)  # Allow direction to settle
                 
@@ -266,15 +266,15 @@ def main():
                 denominator = np.sum((first_scan_times - t_mean)**2)
                 
                 if abs(denominator) < 1e-10:
-                    print("Warning: Cannot estimate angular rate - using default")
+                    # print("Warning: Cannot estimate angular rate - using default")
                     angular_speed = 0.1  # Default angular speed (rad/s)
                 else:
                     angular_speed = numerator / denominator
                 
-                print(f"Initial phase-space tracking setup:")
-                print(f"  Plane normal: n̂ = [{n_hat[0]:.3f}, {n_hat[1]:.3f}, {n_hat[2]:.3f}]")
-                print(f"  Estimated angular speed: Ω = {angular_speed:.4f} rad/s ({np.degrees(angular_speed):.2f} deg/s)")
-                print(f"  Initial phases: {np.degrees(initial_phases_unwrapped)}")
+                # print(f"Initial phase-space tracking setup:")
+                # print(f"  Plane normal: n̂ = [{n_hat[0]:.3f}, {n_hat[1]:.3f}, {n_hat[2]:.3f}]")
+                # print(f"  Estimated angular speed: Ω = {angular_speed:.4f} rad/s ({np.degrees(angular_speed):.2f} deg/s)")
+                # print(f"  Initial phases: {np.degrees(initial_phases_unwrapped)}")
                 
                 # Initialize phase-space α-β filter
                 # State: [phase, phase_rate] in radians and rad/s
@@ -290,12 +290,12 @@ def main():
                 phase_history = list(initial_phases_unwrapped)
                 time_history = list(first_scan_times)
                 
-                print(f"\n=== STARTING PHASE-SPACE TRACKING ===")
-                print(f"Initial filter state: s = {np.degrees(phase_filter[0]):.1f}°, Ω = {np.degrees(phase_filter[1]):.3f} deg/s")
+                # print(f"\n=== STARTING PHASE-SPACE TRACKING ===")
+                # print(f"Initial filter state: s = {np.degrees(phase_filter[0]):.1f}°, Ω = {np.degrees(phase_filter[1]):.3f} deg/s")
                 
                 while tracking_iteration < max_tracking_iterations:
                     tracking_iteration += 1
-                    print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
+                    # print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
                     
                     # Clear LiDAR queue before starting
                     while not lidar_data_queue.empty():
@@ -314,10 +314,10 @@ def main():
                     phase_pred = phase_filter[0] + phase_filter[1] * dt
                     phase_rate_pred = phase_filter[1]  # Constant velocity assumption
                     
-                    print(f"Phase prediction:")
-                    print(f"  Time step: dt = {dt:.3f}s")
-                    print(f"  Predicted phase: s_pred = {np.degrees(phase_pred):.1f}° (unwrapped)")
-                    print(f"  Predicted rate: Ω_pred = {np.degrees(phase_rate_pred):.3f} deg/s")
+                    # print(f"Phase prediction:")
+                    # print(f"  Time step: dt = {dt:.3f}s")
+                    # print(f"  Predicted phase: s_pred = {np.degrees(phase_pred):.1f}° (unwrapped)")
+                    # print(f"  Predicted rate: Ω_pred = {np.degrees(phase_rate_pred):.3f} deg/s")
                     
                     # CONVERT PREDICTED PHASE TO AZ/EL FOR POINTING
                     # Reconstruct 3D unit vector from predicted phase
@@ -326,16 +326,16 @@ def main():
                     # Convert unit vector back to spherical coordinates
                     azi_pred, tilt_pred = unit_to_angles(u_pred)
                     
-                    print(f"Pointing prediction:")
-                    print(f"  Predicted azimuth: {np.degrees(azi_pred):.1f}°")
-                    print(f"  Predicted elevation: {np.degrees(tilt_pred):.1f}°")
+                    # print(f"Pointing prediction:")
+                    # print(f"  Predicted azimuth: {np.degrees(azi_pred):.1f}°")
+                    # print(f"  Predicted elevation: {np.degrees(tilt_pred):.1f}°")
                     
                     # Expand search if target not found at prediction with individual ranges
                     base_search_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))
                     azimuth_range = base_search_deg*0.5  #  azimuth search
                     elevation_range = base_search_deg * 1.5  #  elevation search
                     
-                    print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
+                    # print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                     
                     # Calculate search area bounds
                     start_azimuth = np.degrees(azi_pred) 
