@@ -308,7 +308,7 @@ def main():
                     current_time = time.time()
                     dt = current_time - t_last
                     if dt <= 0 or dt < 0.1:  # Minimum 100ms between updates
-                        dt = 0.08  # Use reasonable default
+                        dt = 0.1  # Use reasonable default instead of 0.08
                     
                     # Predict next phase using constant angular velocity model
                     phase_pred = phase_filter[0] + phase_filter[1] * dt
@@ -338,15 +338,12 @@ def main():
                     print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                     
                     # Calculate search area bounds
-                    start_azimuth = np.degrees(azi_pred) - azimuth_range/2
-                    end_azimuth = np.degrees(azi_pred) + azimuth_range/2
+                    start_azimuth = np.degrees(azi_pred) 
+                    end_azimuth = np.degrees(azi_pred) 
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
                     # MEASUREMENT STEP - scan at predicted location
-                    # anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
-                    #     pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
-                    #     stepper_steps)
                     current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
                             pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                             end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
@@ -365,8 +362,8 @@ def main():
                         print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                         
                         # Calculate search area bounds
-                        start_azimuth = np.degrees(azi_pred) - azimuth_range/2
-                        end_azimuth = np.degrees(azi_pred) + azimuth_range/2
+                        start_azimuth = np.degrees(azi_pred) 
+                        end_azimuth = np.degrees(azi_pred) 
                         start_elevation = np.degrees(tilt_pred) - elevation_range/2
                         end_elevation = np.degrees(tilt_pred) + elevation_range/2
                         
@@ -421,8 +418,14 @@ def main():
                         # Convert measured unit vector to phase
                         phase_meas = phase_from_unit(u_meas, cos_base, sin_base)
                         
-                        # Handle phase wrapping - compute residual in wrapped space
-                        phase_residual = wrap_to_pi(phase_meas - phase_pred)
+                        # FIX: Proper phase residual calculation for unwrapped tracking
+                        # Since we're tracking in unwrapped space, we need to unwrap the measurement
+                        # relative to our current filter state (which is unwrapped)
+                        last_unwrapped_phase = phase_filter[0]  # Current filter state is unwrapped
+                        
+                        # Calculate the wrapped difference and unwrap it relative to prediction
+                        wrapped_diff = wrap_to_pi(phase_meas - (phase_pred % (2*np.pi)))
+                        phase_residual = wrapped_diff  # This is the correct residual in radians
                         
                         print(f"Phase measurement and update:")
                         print(f"  Measured phase: s_meas = {np.degrees(phase_meas):.1f}° (wrapped)")
@@ -436,19 +439,12 @@ def main():
                         phase_filter = [phase_updated, phase_rate_updated]
                         t_last = anomaly_measured[3]
                         
-                        # Store for history (unwrap phase for logging)
-                        if phase_history:
-                            # Unwrap relative to last phase in history
-                            last_phase = phase_history[-1]
-                            phase_unwrapped = last_phase + wrap_to_pi(phase_updated - wrap_to_pi(last_phase))
-                        else:
-                            phase_unwrapped = phase_updated
-                            
-                        phase_history.append(phase_unwrapped)
+                        # Store for history (keep unwrapped for logging)
+                        phase_history.append(phase_updated)
                         time_history.append(t_last)
                         
                         print(f"Filter update:")
-                        print(f"  Updated phase: s = {np.degrees(phase_updated):.1f}° (wrapped)")
+                        print(f"  Updated phase: s = {np.degrees(phase_updated):.1f}° (unwrapped)")
                         print(f"  Updated rate: Ω = {np.degrees(phase_rate_updated):.3f} deg/s")
                         print(f"  Phase history length: {len(phase_history)}")
                         
