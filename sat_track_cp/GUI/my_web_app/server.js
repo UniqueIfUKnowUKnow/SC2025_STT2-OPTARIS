@@ -1,41 +1,55 @@
-﻿// Import the WebSocketServer class from the 'ws' library.
-import { WebSocketServer } from 'ws';
+﻿// Import the WebSocketServer and WebSocket classes from the 'ws' library.
+import { WebSocketServer, WebSocket } from 'ws';
+import http from 'http';
 
-// Set the port for the WebSocket server to listen on.
-const PORT = 8080;
+// Try to start the server on the first available port, beginning at env or 8080
+const START_PORT = Number(process.env.WS_PORT || 8080);
+const MAX_PORT = START_PORT + 10;
 
-// Create a new WebSocket server instance.
-const wss = new WebSocketServer({ port: PORT });
+function startServer(port) {
+    const server = http.createServer();
 
-// Set up a listener for new client connections.
-wss.on('connection', ws => {
-    console.log('Client connected');
-
-    // Set up a listener for messages from the connected client.
-    ws.on('message', message => {
-        // Log the message received from the client for debugging purposes.
-        console.log(`Received message: ${message}`);
-
-        // Broadcast the received message to all connected clients.
-        wss.clients.forEach(client => {
-            // Check if the client is still open and ready to receive messages.
-            if (client.readyState === WebSocketServer.OPEN) {
-                // Send the message to the client.
-                client.send(message);
+    server.on('error', (err) => {
+        if (err && err.code === 'EADDRINUSE') {
+            const next = port + 1;
+            if (next <= MAX_PORT) {
+                console.warn(`Port ${port} in use, trying ${next}...`);
+                startServer(next);
+            } else {
+                console.error(`No available ports between ${START_PORT}-${MAX_PORT}.`);
+                process.exit(1);
             }
+        } else {
+            console.error('HTTP server error:', err);
+        }
+    });
+
+    server.listen(port, () => {
+        const wss = new WebSocketServer({ server });
+
+        wss.on('connection', (ws) => {
+            console.log('Client connected');
+
+            ws.on('message', (message) => {
+                // Broadcast the received message to all connected clients.
+                wss.clients.forEach((client) => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(message);
+                    }
+                });
+            });
+
+            ws.on('close', () => {
+                console.log('Client disconnected');
+            });
+
+            ws.on('error', (error) => {
+                console.error('WebSocket error:', error);
+            });
         });
-    });
 
-    // Set up a listener for when a client disconnects.
-    wss.on('close', () => {
-        console.log('Client disconnected');
+        console.log(`WebSocket server is running on ws://localhost:${port}`);
     });
+}
 
-    // Set up a listener for errors.
-    wss.on('error', error => {
-        console.error('WebSocket error:', error);
-    });
-});
-
-// Log a message to the console to let us know the server is running.
-console.log(`WebSocket server is running on ws://localhost:${PORT}`);
+startServer(START_PORT);

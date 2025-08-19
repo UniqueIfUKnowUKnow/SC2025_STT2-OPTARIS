@@ -7,7 +7,13 @@ import os
 # Set the WebSocket server URL.
 # IMPORTANT: Replace 'localhost' with the actual IP address of the computer running the Node.js server.
 # For example: 'ws://192.168.1.100:8080'
-WEBSOCKET_URL = "ws://localhost:8080"
+# Try multiple WS ports to match the GUI server's fallback behavior
+WS_URLS = [
+    "ws://localhost:8080",
+    "ws://localhost:8081",
+    "ws://localhost:8082",
+    "ws://localhost:8083",
+]
 
 # --- Main Logic ---
 def on_open(ws):
@@ -43,8 +49,11 @@ def on_open(ws):
 
             if data_point is not None:
                 json_data = json.dumps(data_point)
-                ws.send(json_data)
-                print(f"Sent data: {json_data}")
+                try:
+                    ws.send(json_data)
+                    print(f"Sent data: {json_data}")
+                except Exception as send_err:
+                    print(f"WebSocket send failed: {send_err}")
             else:
                 print("No last_point.json yet; waiting...")
 
@@ -76,15 +85,19 @@ if __name__ == "__main__":
     # Enable debugging to see more verbose output.
     # websocket.enableTrace(True)
 
-    # Create a new WebSocketApp instance with event handlers.
-    ws_app = websocket.WebSocketApp(
-        WEBSOCKET_URL,
-        on_open=on_open,
-        on_error=on_error,
-        on_close=on_close
-    )
-
-    # Run the WebSocket application.
-    # The `run_forever()` method will block and keep the script running.
-    # It also handles automatic reconnections.
-    ws_app.run_forever()
+    # Try a list of candidate WS URLs until one connects
+    for url in WS_URLS:
+        print(f"Attempting to connect to {url}...")
+        try:
+            ws_app = websocket.WebSocketApp(
+                url,
+                on_open=on_open,
+                on_error=on_error,
+                on_close=on_close
+            )
+            ws_app.run_forever()
+            break
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            print(f"Connection failed for {url}: {e}")

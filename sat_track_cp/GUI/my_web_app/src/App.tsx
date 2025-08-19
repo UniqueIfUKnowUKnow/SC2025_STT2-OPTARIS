@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { LineSegments } from 'three';
 import './App.css';
 
 // Type definitions for the data points
@@ -29,13 +28,16 @@ const App: React.FC = () => {
 
     // WebSocket connection handler
     useEffect(() => {
-        // URL for the WebSocket server
-        const wsUrl = 'ws://localhost:8080';
+        // Candidate URLs for the WebSocket server (fallbacks if 8080 is busy)
+        const wsUrls = ['ws://localhost:8080','ws://localhost:8081','ws://localhost:8082','ws://localhost:8083'];
         let ws: WebSocket;
+        let currentIndex = 0;
 
         // Function to connect to the WebSocket
         const connectWebSocket = () => {
-            ws = new WebSocket(wsUrl);
+            const url = wsUrls[currentIndex % wsUrls.length];
+            console.log(`Attempting WS connection to ${url}`);
+            ws = new WebSocket(url);
 
             ws.onopen = () => {
                 console.log('Connected to WebSocket server');
@@ -70,7 +72,9 @@ const App: React.FC = () => {
                 setIsConnected(false);
                 showMessage('Disconnected. Retrying in 5 seconds...', 'error');
                 // Attempt to reconnect after a delay
-                setTimeout(connectWebSocket, 5000);
+                // Try next URL on each reconnect attempt
+                currentIndex = (currentIndex + 1) % wsUrls.length;
+                setTimeout(connectWebSocket, 2000);
             };
 
             ws.onerror = (error) => {
@@ -178,7 +182,7 @@ const App: React.FC = () => {
                 pointMesh.position.set(latestPoint.x, latestPoint.y, latestPoint.z);
 
                 // Remove the previous latest point to avoid clutter
-                const oldLatest = sceneRef.current.children.find(child => (child as THREE.Mesh).geometry instanceof THREE.SphereGeometry && child !== sceneRef.current?.children[0]);
+                const oldLatest = sceneRef.current.children.find((child: THREE.Object3D) => (child as THREE.Mesh).geometry instanceof THREE.SphereGeometry && child !== sceneRef.current?.children[0]);
                 if (oldLatest) {
                     sceneRef.current.remove(oldLatest);
                     oldLatest.geometry.dispose();
