@@ -192,20 +192,24 @@ def main():
                     }
                 })
                 
+                detections_required = 3
+                # # #Sweeping for points
+                # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
+                #     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                #     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, detections_required
+                # )
                 
-                # #Sweeping for points
-                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
-                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, 3
-                )
-                # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done = perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation,
-                #                 0, 10, stepper_steps, anomaly_locations, 
-                #                 anomaly_averaged_coords, anomaly_count, 3, 
-                #                 num_steps=50, direction="forward")
+                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done = perform_point_to_point_sweep(
+                    pi, lidar_data_queue, calibration_data, 5, 10,
+                    20, 20, stepper_steps, anomaly_locations, 
+                    anomaly_averaged_coords, anomaly_count, detections_required, 
+                    num_steps=3, direction="forward")
                 
-
+                print(anomaly_count)
+                print(anomaly_averaged_coords)
                 if anomaly_count == 3:
-                    current_state = states[2]
+                   detections_required = 1
+                   current_state = states[2]
 
             
             elif current_state == "DETECTED":
@@ -313,9 +317,14 @@ def main():
                     print(f"  Predicted elevation: {np.degrees(tilt_pred):.1f}°")
                     
                     # MEASUREMENT STEP - scan at predicted location
-                    anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
-                        pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
-                        stepper_steps)
+                    # anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps = perform_targeted_scan(
+                    #     pi, lidar_data_queue, calibration_data, np.degrees(azi_pred), np.degrees(tilt_pred),
+                    #     stepper_steps)
+                    anomaly_found, anomaly_measured, current_azimuth, current_elevation, stepper_steps, anomaly_count  = perform_point_to_point_sweep(
+                    pi, lidar_data_queue, calibration_data, 5, 10,
+                    20, 20, stepper_steps, anomaly_locations, 
+                    anomaly_averaged_coords, anomaly_count, detections_required, 
+                    num_steps=3, direction="forward")
                     
                     if not anomaly_found:
                         # Expand search if target not found at prediction
