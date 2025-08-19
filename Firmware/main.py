@@ -308,7 +308,7 @@ def main():
                     current_time = time.time()
                     dt = current_time - t_last
                     if dt <= 0 or dt < 0.1:  # Minimum 100ms between updates
-                        dt = 0.05  # Use reasonable default
+                        dt = 0.08  # Use reasonable default
                     
                     # Predict next phase using constant angular velocity model
                     phase_pred = phase_filter[0] + phase_filter[1] * dt
@@ -332,8 +332,8 @@ def main():
                     
                     # Expand search if target not found at prediction with individual ranges
                     base_search_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))
-                    azimuth_range = base_search_deg * 1.5  #  azimuth search
-                    elevation_range = base_search_deg * 2.0  #  elevation search
+                    azimuth_range = base_search_deg*0.5  #  azimuth search
+                    elevation_range = base_search_deg * 1.5  #  elevation search
                     
                     print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                     
