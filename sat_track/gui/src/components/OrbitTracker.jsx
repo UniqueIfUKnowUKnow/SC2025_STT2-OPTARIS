@@ -9,6 +9,7 @@ import SimpleEarth from './SimpleEarth';
 import Starfield from './Starfield';
 import './OrbitTracker.css';
 import SensorWebSocket from '../services/SensorWebSocket';
+import TleWebSocket from '../services/TleWebSocket';
 import { geodeticToEcef, lidarSphericalToEcefDelta, ecefToSceneArray, EARTH_RADIUS_KM } from '../utils/geo';
 import { Html } from '@react-three/drei';
 
@@ -202,6 +203,7 @@ const MeasuredPath = ({ positions }) => {
 };
 
 // Multiple satellite TLEs for comprehensive tracking
+// Initialize with ISS only; dynamic satellites (e.g., Drone) are added via TLE WebSocket
 const SATELLITE_TLES = {
   'ISS': {
     name: 'International Space Station',
@@ -435,6 +437,10 @@ const ControlPanel = ({
   wsUrl,
   onWsUrlChange,
   onReconnect,
+  tleWsStatus,
+  tleWsUrl,
+  onTleWsUrlChange,
+  onTleReconnect,
   observerLat,
   observerLon,
   observerAltKm,
@@ -493,6 +499,24 @@ const ControlPanel = ({
       </div>
 
       <div className="info-box">
+        <h3>TLE WebSocket</h3>
+        <div className="info-item">
+          <label>Status:</label>
+          <span>{tleWsStatus}</span>
+        </div>
+        <div className="info-item">
+          <label>URL:</label>
+          <input
+            style={{ width: '100%' }}
+            value={tleWsUrl}
+            onChange={(e) => onTleWsUrlChange(e.target.value)}
+            placeholder="ws://raspberrypi.local:8770"
+          />
+        </div>
+        <button className="clear-button" onClick={onTleReconnect}>Reconnect</button>
+      </div>
+
+      <div className="info-box">
         <h3>Observer (LiDAR) Location</h3>
         <div className="info-item"><label>Lat (deg):</label><input type="number" step="0.0001" value={observerLat} onChange={(e)=>onObserverChange({ lat: parseFloat(e.target.value) })} /></div>
         <div className="info-item"><label>Lon (deg):</label><input type="number" step="0.0001" value={observerLon} onChange={(e)=>onObserverChange({ lon: parseFloat(e.target.value) })} /></div>
@@ -520,6 +544,7 @@ const ControlPanel = ({
 const OrbitTracker = () => {
   const [status, setStatus] = useState('Initializing');
   const [wsStatus, setWsStatus] = useState('disconnected');
+  const [tleWsStatus, setTleWsStatus] = useState('disconnected');
   const [predictedPosition, setPredictedPosition] = useState(null);
   const [measuredPosition, setMeasuredPosition] = useState(null);
   const [measuredPositions, setMeasuredPositions] = useState([]);
@@ -527,6 +552,8 @@ const OrbitTracker = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [wsUrl, setWsUrl] = useState('ws://raspberrypi.local:8765');
   const wsRef = useRef(null);
+  const [tleWsUrl, setTleWsUrl] = useState('ws://raspberrypi.local:8770');
+  const tleWsRef = useRef(null);
   const [observer, setObserver] = useState({ lat: 37.7749, lon: -122.4194, altKm: 0.02 });
   const [tle, setTle] = useState({
     l1: TLE_LINE1,
@@ -590,6 +617,40 @@ const OrbitTracker = () => {
 
     return () => clearInterval(interval);
   }, [satellites]);
+
+  // TLE WebSocket: receive dynamic TLE updates (e.g., Drone) and add/update satellites
+  useEffect(() => {
+    if (tleWsRef.current) {
+      tleWsRef.current.stop();
+      tleWsRef.current = null;
+    }
+    const client = new TleWebSocket({
+      url: tleWsUrl,
+      onStatusChange: setTleWsStatus,
+      onTle: (data) => {
+        try {
+          const { id = 'Drone', name = 'Drone', tle1, tle2 } = data;
+          const rec = satellite.twoline2satrec(tle1, tle2);
+          setSatellites(prev => ({
+            ...prev,
+            [id]: {
+              name,
+              tle1,
+              tle2,
+              rec,
+              position: prev[id]?.position ?? null,
+              color: prev[id]?.color ?? '#ffffff'
+            }
+          }));
+        } catch (e) {
+          console.error('Invalid TLE received:', e);
+        }
+      }
+    });
+    tleWsRef.current = client;
+    client.start();
+    return () => client.stop();
+  }, [tleWsUrl]);
 
   // WebSocket: receive LiDAR readings and convert to scene position
   useEffect(() => {
@@ -671,6 +732,17 @@ const OrbitTracker = () => {
           wsUrl={wsUrl}
           onWsUrlChange={setWsUrl}
           onReconnect={reconnectWs}
+          tleWsStatus={tleWsStatus}
+          tleWsUrl={tleWsUrl}
+          onTleWsUrlChange={setTleWsUrl}
+          onTleReconnect={() => {
+            if (tleWsRef.current) {
+              tleWsRef.current.stop();
+              tleWsRef.current.start();
+            } else {
+              setTleWsUrl((u) => u);
+            }
+          }}
           observerLat={observer.lat}
           observerLon={observer.lon}
           observerAltKm={observer.altKm}
