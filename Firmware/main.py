@@ -466,6 +466,7 @@ def main():
                             phase_span = phase_history[-1] - phase_history[0]
                             if abs(phase_span) > 2*np.pi:
                                 print(f"Completed one orbit! Phase span: {np.degrees(phase_span):.1f}°")
+                                break
                                 # Could break here if you want to stop after one orbit
                         
                     else:
@@ -490,19 +491,20 @@ def main():
                 #     save_calibration_data(plot_data)
                 
                 # Optional: Save phase history for analysis
-                if len(phase_history) > 1:
-                    phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    phase_filename = f"phase_tracking_{timestamp}.csv"
-                    try:
-                        with open(phase_filename, 'w', newline='') as csvfile:
-                            writer = csv.writer(csvfile)
-                            writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
-                            for row in phase_data:
-                                writer.writerow(row)
-                        print(f"✓ Phase tracking data saved to: {phase_filename}")
-                    except Exception as e:
-                        print(f"✗ Error saving phase data: {e}")
+
+        if len(phase_history) > 1:
+            phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            phase_filename = f"phase_tracking_{timestamp}.csv"
+            try:
+                with open(phase_filename, 'w', newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
+                    for row in phase_data:
+                        writer.writerow(row)
+                print(f"✓ Phase tracking data saved to: {phase_filename}")
+            except Exception as e:
+                print(f"✗ Error saving phase data: {e}")
                 
                 
     except KeyboardInterrupt:
