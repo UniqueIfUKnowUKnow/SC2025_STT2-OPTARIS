@@ -14,15 +14,9 @@ PORT = int(os.getenv("PORT", "8770"))
 # The file should contain exactly two lines: TLE1 and TLE2.
 TLE_PATH = os.getenv("TLE_PATH", "drone.tle")
 
-# Initial values (used until the file provides newer values)
-TLE1 = os.getenv(
-    "DRONE_TLE1",
-    "1 99999U 25001A   25232.58008588 0.00000000  00000-0  00000-0 0",
-)
-TLE2 = os.getenv(
-    "DRONE_TLE2",
-    "2 99999 167.1544 112.8928 0000000   0.0000 287.0660  0.00000000",
-)
+# Mutable current TLE values (populated strictly from file on startup and on changes)
+TLE1 = None  # type: ignore
+TLE2 = None  # type: ignore
 
 CLIENTS = set()
 
@@ -38,11 +32,8 @@ def _read_tle_file(path: str) -> Tuple[str, str]:
     return lines[0], lines[1]
 
 
-async def broadcast_tle(tle1: str, tle2: str):
-    """Send current TLE to all connected clients."""
-    if not CLIENTS:
-        return
-    msg = json.dumps(
+def _build_msg(tle1: str, tle2: str) -> str:
+    return json.dumps(
         {
             "type": "tle_update",
             "id": "Drone",
@@ -52,6 +43,13 @@ async def broadcast_tle(tle1: str, tle2: str):
             "timestamp": int(time.time() * 1000),
         }
     )
+
+
+async def broadcast_tle(tle1: str, tle2: str):
+    """Send current TLE to all connected clients."""
+    if not CLIENTS:
+        return
+    msg = _build_msg(tle1, tle2)
     to_remove = []
     for ws in list(CLIENTS):
         try:
@@ -81,6 +79,7 @@ async def tle_file_watcher(path: str, poll_sec: float = 1.0):
                 if (tle1, tle2) != last_content:
                     TLE1, TLE2 = tle1, tle2
                     last_content = (tle1, tle2)
+                    print(f"[TLE] File change detected → broadcasting update")
                     await broadcast_tle(TLE1, TLE2)
         except FileNotFoundError:
             # File not present yet; ignore and retry
@@ -94,8 +93,12 @@ async def tle_file_watcher(path: str, poll_sec: float = 1.0):
 async def client_handler(ws):
     CLIENTS.add(ws)
     try:
-        # Send the current TLE immediately on connect
-        await broadcast_tle(TLE1, TLE2)
+        # Send the current TLE immediately to the connecting client only
+        try:
+            await ws.send(_build_msg(TLE1, TLE2))
+            print(f"[WS] Sent current TLE to new client ({len(CLIENTS)} total)")
+        except Exception:
+            pass
         await ws.wait_closed()
     finally:
         try:
@@ -105,9 +108,25 @@ async def client_handler(ws):
 
 
 async def main():
+    # Load initial TLEs from file before accepting connections (no defaults)
+    async def wait_for_initial_tle(path: str, poll_sec: float = 0.5):
+        global TLE1, TLE2
+        print(f"[TLE] Waiting for initial TLE at {path}...")
+        while True:
+            try:
+                tle1, tle2 = _read_tle_file(path)
+                TLE1, TLE2 = tle1, tle2
+                print(f"[TLE] Loaded initial TLE from {path}")
+                return
+            except Exception:
+                await asyncio.sleep(poll_sec)
+
+    await wait_for_initial_tle(TLE_PATH)
+
     server = websockets.serve(client_handler, HOST, PORT)
     async with server:
         # Start watcher task in background
+        print(f"[WS] TLE server on ws://{HOST}:{PORT} watching {TLE_PATH}")
         watcher = asyncio.create_task(tle_file_watcher(TLE_PATH, poll_sec=0.5))
         try:
             await asyncio.Future()  # run forever
