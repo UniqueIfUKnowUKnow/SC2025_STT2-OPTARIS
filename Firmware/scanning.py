@@ -274,7 +274,7 @@ def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_a
 
 def perform_continuous_servo_scan(pi, lidar_data_queue, calibration_data, current_azimuth, 
                                 current_elevation, stepper_steps, tilt_max, tilt_min, 
-                                sweep_count=1, servo_speed=20.0):
+                                sweep_count=1, servo_speed=120.0):
     """
     Perform servo sweeps in complete cycles. Each sweep cycle goes:
     current_elevation → tilt_max → tilt_min → current_elevation
@@ -300,21 +300,15 @@ def perform_continuous_servo_scan(pi, lidar_data_queue, calibration_data, curren
             - anomaly_detected: Boolean indicating if any anomalies were found
     """
     
-    print(f"Starting {sweep_count} servo sweep cycle(s)")
-    print(f"Sweep pattern: {current_elevation}° → {tilt_max}° → {tilt_min}° → {current_elevation}°")
-    print(f"Fixed azimuth: {current_azimuth:.1f}°, Servo speed: {servo_speed}°/s")
-    
     # Validate input angles
     tilt_min = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, tilt_min))
     tilt_max = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, tilt_max))
     original_elevation = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, current_elevation))
     
     if tilt_min >= tilt_max:
-        print("Warning: tilt_min >= tilt_max, swapping values")
         tilt_min, tilt_max = tilt_max, tilt_min
     
-    print(f"Validated angles: Start/End={original_elevation}°, Range=[{tilt_min}°, {tilt_max}°]")
-    
+
     # Clear LiDAR queue before starting
     while not lidar_data_queue.empty():
         try:
@@ -328,13 +322,11 @@ def perform_continuous_servo_scan(pi, lidar_data_queue, calibration_data, curren
     anomaly_detected = False
     
     # Move to starting position
-    print(f"Moving to starting position: {original_elevation}°")
     set_servo_angle(pi, original_elevation)
-    time.sleep(0.2)  # Allow servo to settle
+    time.sleep(0.01)  # Allow servo to settle
     
     # Perform sweep cycles
     for cycle in range(sweep_count):
-        print(f"\n--- Sweep Cycle {cycle + 1}/{sweep_count} ---")
         
         # Define the 3 segments of each sweep cycle
         sweep_segments = [
@@ -352,7 +344,7 @@ def perform_continuous_servo_scan(pi, lidar_data_queue, calibration_data, curren
             movement_time = distance / servo_speed
             
             # Number of steps for smooth motion (50ms updates)
-            update_interval = 0.05
+            update_interval = 0.01
             num_steps = max(1, int(movement_time / update_interval))
             
             # Create smooth angle progression
@@ -524,3 +516,145 @@ def perform_simple_servo_scan(pi, lidar_data_queue, calibration_data, current_az
     print(f"Simple scan complete! {len(anomaly_averaged_coords)} anomaly groups detected")
     
     return current_azimuth, original_elevation, stepper_steps, anomaly_averaged_coords, anomaly_detected
+
+def servo_only_scan(pi, lidar_data_queue, calibration_data, current_azimuth, 
+                                current_elevation, stepper_steps, tilt_max, tilt_min, 
+                                sweep_count=1, servo_speed=120.0):
+    """
+    Perform servo sweeps in complete cycles. Each sweep cycle goes:
+    current_elevation → tilt_max → tilt_min → current_elevation
+    
+    Args:
+        pi: pigpio instance for servo control
+        lidar_data_queue: Queue containing LiDAR readings
+        calibration_data: Reference calibration data for anomaly detection
+        current_azimuth: Current azimuth position in degrees (fixed during scan)
+        current_elevation: Current elevation position in degrees (starting/ending position)
+        stepper_steps: Current stepper motor step count (unchanged)
+        tilt_max: Maximum tilt angle in degrees
+        tilt_min: Minimum tilt angle in degrees
+        sweep_count: Number of complete sweep cycles to perform (default: 1)
+        servo_speed: Servo movement speed in degrees per second (default: 3.0)
+        
+    Returns:
+        tuple: (current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_detected)
+            - current_azimuth: Unchanged azimuth position
+            - current_elevation: Final elevation position (same as starting)
+            - stepper_steps: Unchanged stepper step count
+            - anomaly_averaged_coords: List of detected anomaly coordinates
+            - anomaly_detected: Boolean indicating if any anomalies were found
+    """
+    
+    # Validate input angles
+    tilt_min = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, tilt_min))
+    tilt_max = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, tilt_max))
+    original_elevation = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, current_elevation))
+    
+    if tilt_min >= tilt_max:
+        tilt_min, tilt_max = tilt_max, tilt_min
+    
+    # Initialize anomaly tracking
+    anomaly_locations = []
+    anomaly_averaged_coords = []
+    anomaly_detected = False
+    
+    # Move to starting position
+    set_servo_angle(pi, original_elevation)
+    time.sleep(0.01)  # Allow servo to settle
+    
+    # Perform sweep cycles
+    for cycle in range(sweep_count):
+        
+        # Define the 3 segments of each sweep cycle
+        sweep_segments = [
+            (original_elevation, tilt_max, f"Moving to MAX ({tilt_max}°)"),
+            (tilt_max, tilt_min, f"Moving to MIN ({tilt_min}°)"),
+            (tilt_min, original_elevation, f"Returning to START ({original_elevation}°)")
+        ]
+        
+        
+        for segment_idx, (start_angle, end_angle, description) in enumerate(sweep_segments):
+            print(f"  {description}")
+            
+            # Calculate smooth motion for this segment
+            angle_diff = end_angle - start_angle
+            distance = abs(angle_diff)
+            movement_time = distance / servo_speed
+            
+            # Number of steps for smooth motion (50ms updates)
+            update_interval = 0.01
+            num_steps = max(1, int(movement_time / update_interval))
+            
+            # Create smooth angle progression
+            angle_progression = np.linspace(start_angle, end_angle, num_steps)
+            
+            # Execute smooth movement for this segment
+            for step_idx, target_angle in enumerate(angle_progression):
+                # Move servo to target position
+                set_servo_angle(pi, target_angle)
+                
+                # Process LiDAR readings during movement
+                segment_start_time = time.time()
+                readings_collected = 0
+                
+                while (time.time() - segment_start_time) < update_interval:
+                    try:
+                        distance = lidar_data_queue.get_nowait()
+                        readings_collected += 1
+                        
+                        # Get reference distance for current position
+                        reference = get_interpolated_reference_distance(
+                            current_azimuth, target_angle, calibration_data
+                        )
+                        
+                        # Check for anomaly
+                        if distance < reference * ANOMALY_FACTOR:
+                            detection_time = time.time()
+                            anomaly_data = [distance, current_azimuth, target_angle, detection_time]
+                            anomaly_locations.append(anomaly_data)
+                            
+                            print(f"    Anomaly detected: {distance:.1f}cm at "
+                                  f"Az={current_azimuth:.1f}°, El={target_angle:.1f}°, "
+                                  f"Expected: {reference:.1f}cm")
+                            
+                            anomaly_detected = True
+                            
+                    except queue.Empty:
+                        time.sleep(0.002)  # Small delay to prevent busy waiting
+                        continue
+                
+                # Progress indication for longer segments
+                if num_steps > 10 and step_idx % (num_steps // 4) == 0:
+                    progress = (step_idx / num_steps) * 100
+                    print(f"    Segment progress: {progress:.0f}% (readings: {readings_collected})")
+            
+            print(f"  Completed: {description}")
+        
+        # Process anomalies after each complete cycle
+        if len(anomaly_locations) >= 3:
+            # Calculate average of the anomaly group
+            avg_anomaly = [sum(col) / len(col) for col in zip(*anomaly_locations)]
+            avg_anomaly = [round(val, 2) for val in avg_anomaly]
+            anomaly_averaged_coords.append(tuple(avg_anomaly))
+            
+            print(f"  Cycle {cycle + 1} anomaly group averaged: {avg_anomaly}")
+            anomaly_locations.clear()  # Clear for next cycle
+        
+        print(f"Cycle {cycle + 1} complete - returned to starting position")
+    
+    # Process any remaining anomalies
+    if len(anomaly_locations) > 0:
+        avg_anomaly = [sum(col) / len(col) for col in zip(*anomaly_locations)]
+        avg_anomaly = [round(val, 2) for val in avg_anomaly]
+        anomaly_averaged_coords.append(tuple(avg_anomaly))
+        print(f"Final anomaly group averaged: {avg_anomaly}")
+    
+    # Ensure we're at the original position
+    final_elevation = original_elevation
+    
+    print(f"\nSweep sequence complete!")
+    print(f"Completed {sweep_count} full cycle(s)")
+    print(f"Total anomaly groups detected: {len(anomaly_averaged_coords)}")
+    print(f"Final servo position: {final_elevation:.1f}° (returned to start)")
+    
+    return current_azimuth, final_elevation, stepper_steps, anomaly_averaged_coords, anomaly_detected

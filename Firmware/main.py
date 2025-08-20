@@ -169,7 +169,8 @@ def main():
                 # Mapping environment
                 calibration_data = calibrate_environment(pi, lidar_data_queue)
                 print(calibration_data)
-                save_calibration_data(calibration_data)
+                # save data
+                # save_calibration_data(calibration_data)
                 _safe_push({
                     "status": "CALIBRATING",
                     "progress": 100,
@@ -198,10 +199,10 @@ def main():
                 
                 detections_required = 7
                 # #Sweeping for points
-                current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
-                    pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
-                    stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, detections_required
-                )
+                # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, calibration_done = perform_scanning_sequence(
+                #     pi, lidar_data_queue, calibration_data, current_azimuth, current_elevation, 
+                #     stepper_steps, anomaly_locations, anomaly_averaged_coords, anomaly_count, detections_required
+                # )
                 
                 # current_azimuth, current_elevation, stepper_steps, anomaly_averaged_coords, anomaly_count, scanning_done, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
                 #     pi, lidar_data_queue, calibration_data,  start_azimuth, start_elevation,
@@ -209,10 +210,10 @@ def main():
                 #     anomaly_averaged_coords, anomaly_count, detections_required, 
                 #     num_steps=10, direction="forward")
 
-                # current_azimuth, current_elevation, stepper_steps, anomaly, anomaly_found = perform_continuous_servo_scan(
-                # pi, lidar_data_queue, calibration_data, 
-                # current_azimuth, current_elevation, stepper_steps,
-                # tilt_max=20, tilt_min=5)
+                current_azimuth, current_elevation, stepper_steps, anomaly, anomaly_found = perform_continuous_servo_scan(
+                pi, lidar_data_queue, calibration_data, 
+                current_azimuth, current_elevation, stepper_steps,
+                tilt_max=20, tilt_min=0)
 
                 # Optional: Move to next search area if more detections needed
                 if anomaly_found == True:
@@ -483,9 +484,9 @@ def main():
                             print("Target lost for too long, exiting tracking mode")
                             break
                 
-                print("Phase-space tracking complete. Saving trajectory data...")
-                if plot_data:
-                    save_calibration_data(plot_data)
+                # print("Phase-space tracking complete. Saving trajectory data...")
+                # if plot_data:
+                #     save_calibration_data(plot_data)
                 
                 # Optional: Save phase history for analysis
                 if len(phase_history) > 1:
