@@ -301,7 +301,7 @@ def main():
 
                 
                 tracking_iteration = 0
-                max_tracking_iterations = 300
+                max_tracking_iterations = 1500
                 
                 # Store tracking history
                 phase_history = list(initial_phases_unwrapped)
@@ -549,10 +549,10 @@ def main():
                         
                     except Exception as e:
                         print(f"✗ Error generating mock TLE: {e}")
+                print(current_azimuth,tracking_iteration)
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
                 scan_tilt = current_elevation
                 anomaly_count = 0
-                
                 current_state = states[1]
                 
             

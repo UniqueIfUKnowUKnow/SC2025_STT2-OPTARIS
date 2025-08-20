@@ -17,11 +17,11 @@ TLE_PATH = os.getenv("TLE_PATH", "drone.tle")
 # Initial values (used until the file provides newer values)
 TLE1 = os.getenv(
     "DRONE_TLE1",
-    "1 00000U 00000A   25001.00000000  .00000000  00000-0  00000-0 0  9991",
+    "1 99999U 25001A   25232.58008588 0.00000000  00000-0  00000-0 0",
 )
 TLE2 = os.getenv(
     "DRONE_TLE2",
-    "2 00000  98.0000  10.0000 0010000  10.0000 350.0000 14.00000000100001",
+    "2 99999 167.1544 112.8928 0000000   0.0000 287.0660  0.00000000",
 )
 
 CLIENTS = set()
