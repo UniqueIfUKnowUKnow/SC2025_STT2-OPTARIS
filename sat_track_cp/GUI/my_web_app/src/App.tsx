@@ -21,15 +21,15 @@ const App: React.FC = () => {
     const [isConnected, setIsConnected] = useState(false);
 
     // Refs for Three.js objects to maintain their state across renders
-    const sceneRef = useRef<THREE.Scene | null>(null);
-    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-    const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-    const lineRef = useRef<THREE.Line | null>(null);
+    const sceneRef = useRef<any>(null);
+    const cameraRef = useRef<any>(null);
+    const rendererRef = useRef<any>(null);
+    const lineRef = useRef<any>(null);
 
     // WebSocket connection handler
     useEffect(() => {
         // Candidate URLs for the WebSocket server (fallbacks if 8080 is busy)
-        const wsUrls = ['ws://localhost:8080','ws://localhost:8081','ws://localhost:8082','ws://localhost:8083'];
+        const wsUrls = ['ws://192.168.55.126:8080','ws://192.168.55.126:8081','ws://192.168.55.126:8082','ws://192.168.55.126:8083'];
         let ws: WebSocket;
         let currentIndex = 0;
 
@@ -113,11 +113,85 @@ const App: React.FC = () => {
         rendererRef.current = renderer;
         containerRef.current.appendChild(renderer.domElement);
 
-        // Add a central point to the scene
-        const centralGeometry = new THREE.SphereGeometry(2, 32, 32);
-        const centralMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const centralSphere = new THREE.Mesh(centralGeometry, centralMaterial);
-        scene.add(centralSphere);
+        // Simple orbit-style pointer controls with pointer capture
+        const target = new THREE.Vector3(0, 0, 0);
+        const spherical = new THREE.Spherical();
+        spherical.setFromVector3(camera.position.clone().sub(target));
+        let isDragging = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        // Improve UX on the canvas
+        renderer.domElement.style.touchAction = 'none';
+        (renderer.domElement as any).style.pointerEvents = 'auto';
+        renderer.domElement.style.cursor = 'grab';
+
+        const onPointerDown = (event: PointerEvent) => {
+            isDragging = true;
+            lastX = event.clientX;
+            lastY = event.clientY;
+            renderer.domElement.setPointerCapture(event.pointerId);
+            renderer.domElement.style.cursor = 'grabbing';
+            console.log('Drag start');
+        };
+
+        const onPointerMove = (event: PointerEvent) => {
+            if (!isDragging) return;
+            const deltaX = event.clientX - lastX;
+            const deltaY = event.clientY - lastY;
+            lastX = event.clientX;
+            lastY = event.clientY;
+
+            const rotateSpeed = 0.005;
+            spherical.theta -= deltaX * rotateSpeed;
+            spherical.phi -= deltaY * rotateSpeed;
+            const EPS = 0.000001;
+            spherical.phi = Math.max(EPS, Math.min(Math.PI - EPS, spherical.phi));
+
+            const newPos = new THREE.Vector3().setFromSpherical(spherical).add(target);
+            camera.position.copy(newPos);
+            camera.lookAt(target);
+        };
+
+        const onPointerUp = (event: PointerEvent) => {
+            isDragging = false;
+            try { renderer.domElement.releasePointerCapture(event.pointerId); } catch {}
+            renderer.domElement.style.cursor = 'grab';
+        };
+
+        const onWheel = (event: WheelEvent) => {
+            event.preventDefault();
+            const zoomFactor = 1 + (event.deltaY > 0 ? 0.1 : -0.1);
+            spherical.radius *= zoomFactor;
+            spherical.radius = Math.max(10, Math.min(2000, spherical.radius));
+            const newPos = new THREE.Vector3().setFromSpherical(spherical).add(target);
+            camera.position.copy(newPos);
+            camera.lookAt(target);
+        };
+
+        renderer.domElement.addEventListener('pointerdown', onPointerDown);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+        renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
+
+        // Add a central cube for reference
+        const cubeSize = 10;
+        const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+        const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true });
+        const centralCube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+        scene.add(centralCube);
+
+        // Add arrows to indicate positive X (red), Y (green), and Z (blue) axes
+        const origin = new THREE.Vector3(0, 0, 0);
+        const axisLength = 80;
+        const headLength = 16;
+        const headWidth = 8;
+        const arrowX = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), origin, axisLength, 0xff0000, headLength, headWidth);
+        const arrowY = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), origin, axisLength, 0x00ff00, headLength, headWidth);
+        const arrowZ = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), origin, axisLength, 0x0000ff, headLength, headWidth);
+        scene.add(arrowX);
+        scene.add(arrowY);
+        scene.add(arrowZ);
 
         // Add ambient light
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -145,6 +219,10 @@ const App: React.FC = () => {
         // Clean up Three.js objects
         return () => {
             window.removeEventListener('resize', handleResize);
+            renderer.domElement.removeEventListener('pointerdown', onPointerDown as any);
+            window.removeEventListener('pointermove', onPointerMove as any);
+            window.removeEventListener('pointerup', onPointerUp as any);
+            renderer.domElement.removeEventListener('wheel', onWheel as any);
             renderer.dispose();
             // Remove the canvas element from the DOM
             if (containerRef.current && renderer.domElement) {
@@ -161,7 +239,7 @@ const App: React.FC = () => {
         if (lineRef.current) {
             sceneRef.current.remove(lineRef.current);
             lineRef.current.geometry.dispose();
-            (lineRef.current.material as THREE.Material).dispose();
+            (lineRef.current.material as any)?.dispose?.();
         }
 
         // Create a new line and points if we have data
@@ -182,11 +260,11 @@ const App: React.FC = () => {
                 pointMesh.position.set(latestPoint.x, latestPoint.y, latestPoint.z);
 
                 // Remove the previous latest point to avoid clutter
-                const oldLatest = sceneRef.current.children.find((child: THREE.Object3D) => (child as THREE.Mesh).geometry instanceof THREE.SphereGeometry && child !== sceneRef.current?.children[0]);
+                const oldLatest = sceneRef.current.children.find((child: any) => (child as any).geometry instanceof THREE.SphereGeometry && child !== sceneRef.current?.children[0]);
                 if (oldLatest) {
                     sceneRef.current.remove(oldLatest);
-                    oldLatest.geometry.dispose();
-                    (oldLatest.material as THREE.Material).dispose();
+                    (oldLatest as any).geometry?.dispose?.();
+                    (oldLatest as any).material?.dispose?.();
                 }
 
                 sceneRef.current.add(pointMesh);

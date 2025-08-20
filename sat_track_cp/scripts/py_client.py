@@ -9,11 +9,11 @@ import os
 # For example: 'ws://192.168.1.100:8080'
 # Try multiple WS ports to match the GUI server's fallback behavior
 WS_URLS = [
-    "ws://localhost:8080",
-    "ws://localhost:8081",
-    "ws://localhost:8082",
-    "ws://localhost:8083",
-]
+    "ws://192.168.55.126:8080",
+    "ws://192.168.55.126:8081",
+    "ws://192.168.55.126:8082",
+    "ws://192.168.55.126:8083",
+]   
 
 # --- Main Logic ---
 def on_open(ws):
@@ -21,7 +21,11 @@ def on_open(ws):
     Called when the WebSocket connection is successfully established.
     Starts sending data in a loop.
     """
-    print("Connection opened to WebSocket server.")
+    try:
+        connected_url = getattr(ws, 'url', 'unknown')
+        print(f"Connected to WebSocket server: {connected_url}")
+    except Exception:
+        print("Connected to WebSocket server.")
 
     # Continuously read the latest detected point written by firmware and forward to WS
     try:
