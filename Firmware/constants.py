@@ -34,7 +34,9 @@ SENSOR_MAX = 1000
 ANOMALY_MAX_RADIUS = 3.0 # max degree range in which to average points
 SWEEP_RANGE = 10
 ANOMALY_FACTOR = 0.7
-
+TILT_EXPANSION_FACTOR = 1.5
+AZI_EXPANSION_FACTOR = 0.5
+MISS_UNCERTAINTY_GROWTH_RATE = 0.08
 
 # Tracking Prediction Settings
 
