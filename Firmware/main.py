@@ -213,7 +213,7 @@ def main():
                 current_azimuth, current_elevation, stepper_steps, anomaly, anomaly_found = perform_continuous_servo_scan(
                 pi, lidar_data_queue, calibration_data, 
                 current_azimuth, current_elevation, stepper_steps,
-                tilt_max=30, tilt_min=0)
+                tilt_max=20, tilt_min=0)
 
                 # Optional: Move to next search area if more detections needed
                 if anomaly_found == True:
@@ -316,8 +316,9 @@ def main():
                     # PREDICTION STEP (entirely in phase space)
                     current_time = time.time()
                     dt = current_time - t_last
-                    if dt <= 0 or dt < 0.1:  # Minimum 100ms between updates
-                        dt = 0.1  # Use reasonable default instead of 0.08
+                    if dt <= 0 or dt < 0.2:  # Minimum 100ms between updates
+                        dt = 0.2
+                          # Use reasonable default instead of 0.08
                     
                     # Predict next phase using constant angular velocity model
                     phase_pred = phase_filter[0] + phase_filter[1] * dt
@@ -353,13 +354,14 @@ def main():
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
                     # MEASUREMENT STEP - scan at predicted location
-                    current_azimuth, current_elevation, stepper_steps, anomaly, anomaly_found = perform_continuous_servo_scan(
-                    pi, lidar_data_queue, calibration_data, 
-                    start_azimuth, current_elevation, stepper_steps,
-                    start_elevation, end_elevation)
-                    if anomaly_found:
+                    current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
+                            pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
+                            end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
+                            anomaly_averaged_coords, anomaly_count, detections_required, 
+                            num_steps=10, direction="forward")
+                    if anomaly_found and anomaly_measured:
                         # Get the most recent detection
-                        anomaly_measured = anomaly
+                        anomaly_measured = list(anomaly_measured[-1][0])
                     
                     if not anomaly_found:
                         # Expand search if target not found at prediction with individual ranges
@@ -375,13 +377,14 @@ def main():
                         start_elevation = np.degrees(tilt_pred) - elevation_range/2
                         end_elevation = np.degrees(tilt_pred) + elevation_range/2
                         
-                        current_azimuth, current_elevation, stepper_steps, anomaly, anomaly_found = perform_continuous_servo_scan(
-                            pi, lidar_data_queue, calibration_data, 
-                            start_azimuth, current_elevation, stepper_steps,
-                            start_elevation, end_elevation)
-                        if anomaly_found:
+                        current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
+                            pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
+                            end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
+                            anomaly_averaged_coords, anomaly_count, detections_required, 
+                            num_steps=10, direction="forward")
+                        if anomaly_found and anomaly_measured:
                             # Get the most recent detection
-                            anomaly_measured = anomaly
+                            anomaly_measured = list(anomaly_measured[-1][0])
 
                     if anomaly_found:
                         print(f"TARGET FOUND at Az={anomaly_measured[1]:.1f}°, El={anomaly_measured[2]:.1f}°")
@@ -487,19 +490,19 @@ def main():
                 #     save_calibration_data(plot_data)
                 
                 # Optional: Save phase history for analysis
-                # if len(phase_history) > 1:
-                #     phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
-                #     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                #     phase_filename = f"phase_tracking_{timestamp}.csv"
-                #     try:
-                #         with open(phase_filename, 'w', newline='') as csvfile:
-                #             writer = csv.writer(csvfile)
-                #             writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
-                #             for row in phase_data:
-                #                 writer.writerow(row)
-                #         print(f"✓ Phase tracking data saved to: {phase_filename}")
-                #     except Exception as e:
-                #         print(f"✗ Error saving phase data: {e}")
+                if len(phase_history) > 1:
+                    phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    phase_filename = f"phase_tracking_{timestamp}.csv"
+                    try:
+                        with open(phase_filename, 'w', newline='') as csvfile:
+                            writer = csv.writer(csvfile)
+                            writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
+                            for row in phase_data:
+                                writer.writerow(row)
+                        print(f"✓ Phase tracking data saved to: {phase_filename}")
+                    except Exception as e:
+                        print(f"✗ Error saving phase data: {e}")
                 
                 
     except KeyboardInterrupt:

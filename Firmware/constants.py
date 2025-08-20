@@ -42,8 +42,8 @@ ANOMALY_FACTOR = 0.7
 DT = 0.5
 
 # Phase-space filter parameters (tuned for phase dynamics)
-ALPHA_PHASE = 0.2   # Position correction gain
-BETA_PHASE = 0.05   # Velocity correction gain
+ALPHA_PHASE = 0.4   # Position correction gain
+BETA_PHASE = 0.1   # Velocity correction gain
 
 # Test TLE
 satellite_name = "ISS (ZARYA)"
