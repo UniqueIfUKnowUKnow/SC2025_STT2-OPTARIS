@@ -288,14 +288,8 @@ def main():
                 print(f"DEBUG: Azimuth increasing = {azimuth_increasing}")
 
                 # If azimuth is increasing but angular speed is negative, fix the coordinate system
-                phase_correction_factor = 1.0
-                if azimuth_increasing and angular_speed < 0:
-                    print("FIXING: Coordinate system handedness issue detected")
-                    print("  -> Azimuth increasing but phase velocity negative")
-                    print("  -> Applying phase correction")
-                    phase_correction_factor = -1.0
-                    angular_speed = -angular_speed
-                    initial_phases_unwrapped = -initial_phases_unwrapped
+                # If azimuth is increasing but angular speed is negative, fix the coordinate system
+
 
                 print(f"CORRECTED: Angular speed = {np.degrees(angular_speed):.2f} deg/s")
 
@@ -348,6 +342,18 @@ def main():
                     
                     # Convert unit vector back to spherical coordinates
                     azi_pred, tilt_pred = unit_to_angles(u_pred)
+
+                    # Ensure azimuth continuity with previous measurements
+                    if len(phase_history) > 0:
+                        # Get last known azimuth from recent detections
+                        last_known_az = np.radians(first_scan_pos[-1, 1])  # Last azimuth from initial scan
+                        
+                        # Handle 360° wrap-around to maintain continuity
+                        azi_diff = azi_pred - last_known_az
+                        if azi_diff > np.pi:
+                            azi_pred -= 2*np.pi
+                        elif azi_diff < -np.pi:
+                            azi_pred += 2*np.pi
                     
                     print(f"Pointing prediction:")
                     print(f"  Predicted azimuth: {np.degrees(azi_pred):.1f}°")
@@ -438,20 +444,19 @@ def main():
                         tilt_meas_rad = np.radians(anomaly_measured[2])
                         u_meas = angles_to_unit(azi_meas_rad, tilt_meas_rad).flatten()
                         
-                        # Convert measured unit vector to phase
-                        phase_meas = phase_correction_factor * phase_from_unit(u_meas, cos_base, sin_base)
-                        
-                        # FIX: Proper phase residual calculation for unwrapped tracking
-                        # Since we're tracking in unwrapped space, we need to unwrap the measurement
-                        # relative to our current filter state (which is unwrapped)
-                        last_unwrapped_phase = phase_filter[0]  # Current filter state is unwrapped
-                        
-                        # Calculate the wrapped difference and unwrap it relative to prediction
-                        wrapped_diff = wrap_to_pi(phase_meas - (phase_pred % (2*np.pi)))
-                        phase_residual = wrapped_diff  # This is the correct residual in radians
+                        # Convert measured unit vector to phase (always wrapped)
+                        phase_meas_wrapped = phase_from_unit(u_meas, cos_base, sin_base)
+
+                        # Unwrap the measured phase relative to the predicted phase
+                        # Find the equivalent wrapped version of predicted phase
+                        phase_pred_wrapped = wrap_to_pi(phase_pred)
+
+                        # Calculate wrapped difference and unwrap it
+                        raw_diff = phase_meas_wrapped - phase_pred_wrapped
+                        phase_residual = wrap_to_pi(raw_diff)  # Keep residual small
                         
                         print(f"Phase measurement and update:")
-                        print(f"  Measured phase: s_meas = {np.degrees(phase_meas):.1f}° (wrapped)")
+                        print(f"  Measured phase: s_meas = {np.degrees(phase_pred_wrapped):.1f}° (wrapped)")
                         print(f"  Phase residual: Δs = {np.degrees(phase_residual):.2f}°")
                         
                         # α-β filter update in phase space
