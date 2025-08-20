@@ -280,13 +280,26 @@ def main():
                 else:
                     angular_speed = numerator / denominator
                 
-                # print(f"Initial phase-space tracking setup:")
-                # print(f"  Plane normal: n̂ = [{n_hat[0]:.3f}, {n_hat[1]:.3f}, {n_hat[2]:.3f}]")
-                # print(f"  Estimated angular speed: Ω = {angular_speed:.4f} rad/s ({np.degrees(angular_speed):.2f} deg/s)")
-                # print(f"  Initial phases: {np.degrees(initial_phases_unwrapped)}")
-                
-                # Initialize phase-space α-β filter
-                # State: [phase, phase_rate] in radians and rad/s
+                azimuth_trend = np.diff(first_scan_pos[:, 1])  # Difference in azimuth values
+                azimuth_increasing = np.mean(azimuth_trend) > 0
+
+                print(f"DEBUG: Angular speed = {np.degrees(angular_speed):.2f} deg/s")
+                print(f"DEBUG: Azimuth trend = {np.mean(azimuth_trend):.2f} deg/measurement")
+                print(f"DEBUG: Azimuth increasing = {azimuth_increasing}")
+
+                # If azimuth is increasing but angular speed is negative, fix the coordinate system
+                phase_correction_factor = 1.0
+                if azimuth_increasing and angular_speed < 0:
+                    print("FIXING: Coordinate system handedness issue detected")
+                    print("  -> Azimuth increasing but phase velocity negative")
+                    print("  -> Applying phase correction")
+                    phase_correction_factor = -1.0
+                    angular_speed = -angular_speed
+                    initial_phases_unwrapped = -initial_phases_unwrapped
+
+                print(f"CORRECTED: Angular speed = {np.degrees(angular_speed):.2f} deg/s")
+
+                # Initialize tracking with corrected values
                 t_last = first_scan_times[-1]
                 phase_filter = [initial_phases_unwrapped[-1], angular_speed]
                 
@@ -336,20 +349,20 @@ def main():
                     # Convert unit vector back to spherical coordinates
                     azi_pred, tilt_pred = unit_to_angles(u_pred)
                     
-                    # print(f"Pointing prediction:")
-                    # print(f"  Predicted azimuth: {np.degrees(azi_pred):.1f}°")
-                    # print(f"  Predicted elevation: {np.degrees(tilt_pred):.1f}°")
+                    print(f"Pointing prediction:")
+                    print(f"  Predicted azimuth: {np.degrees(azi_pred):.1f}°")
+                    print(f"  Predicted elevation: {np.degrees(tilt_pred):.1f}°")
                     
                     # Expand search if target not found at prediction with individual ranges
                     base_search_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))
-                    azimuth_range = base_search_deg*0.5  #  azimuth search
+                    azimuth_range = base_search_deg*1.5  #  azimuth search
                     elevation_range = base_search_deg * 1.5  #  elevation search
                     
                     # print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                     
                     # Calculate search area bounds
-                    start_azimuth = np.degrees(azi_pred) 
-                    end_azimuth = np.degrees(azi_pred) 
+                    start_azimuth = np.degrees(azi_pred) +0.05*azimuth_range 
+                    end_azimuth = np.degrees(azi_pred) +0.05*azimuth_range 
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
@@ -372,8 +385,8 @@ def main():
                         print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                         
                         # Calculate search area bounds
-                        start_azimuth = np.degrees(azi_pred) 
-                        end_azimuth = np.degrees(azi_pred) 
+                        start_azimuth = np.degrees(azi_pred) +0.05*azimuth_range 
+                        end_azimuth = np.degrees(azi_pred) +0.05*azimuth_range  
                         start_elevation = np.degrees(tilt_pred) - elevation_range/2
                         end_elevation = np.degrees(tilt_pred) + elevation_range/2
                         
@@ -426,7 +439,7 @@ def main():
                         u_meas = angles_to_unit(azi_meas_rad, tilt_meas_rad).flatten()
                         
                         # Convert measured unit vector to phase
-                        phase_meas = phase_from_unit(u_meas, cos_base, sin_base)
+                        phase_meas = phase_correction_factor * phase_from_unit(u_meas, cos_base, sin_base)
                         
                         # FIX: Proper phase residual calculation for unwrapped tracking
                         # Since we're tracking in unwrapped space, we need to unwrap the measurement
@@ -475,15 +488,6 @@ def main():
                         # Update time but keep same filter state
                         t_last = current_time
                         
-                        # Could implement more sophisticated lost-target handling here:
-                        # - Increase search radius further
-                        # - Reduce confidence in filter
-                        # - Return to scanning mode
-                        # For now, we'll just continue predicting
-                        
-                        if tracking_iteration > 5:  # Don't give up immediately
-                            print("Target lost for too long, exiting tracking mode")
-                            break
                 
                 # print("Phase-space tracking complete. Saving trajectory data...")
                 # if plot_data:
