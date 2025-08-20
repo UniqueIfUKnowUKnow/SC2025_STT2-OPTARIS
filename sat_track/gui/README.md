@@ -1,69 +1,39 @@
-# React + TypeScript + Vite
+# Sat-track
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Mock LiDAR feed (for development)
 
-Currently, two official plugins are available:
+A small Python WebSocket server is provided to simulate TFmini‑S readings so you can test without hardware.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Prerequisites
+- Python 3.9+
+- Install dependency: `pip install websockets`
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Start the server
+```bash
+# On Raspberry Pi or your dev machine
+export HOST=0.0.0.0   # optional; default 0.0.0.0
+export PORT=8765      # optional; default 8765
+export HZ=10          # messages per second (default 10)
+export MODE=moving    # moving | random (default moving)
+python3 scripts/mock_lidar_ws.py
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+You should see: `Starting mock LiDAR WebSocket on ws://0.0.0.0:8765 (mode=moving, 10 Hz)`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Connect the frontend
+- In the app left panel (WebSocket section), set the URL to your server, for example:
+  - `ws://raspberrypi.local:8765` (if running on your Pi)
+  - `ws://<your-ip>:8765` (if running locally)
+- Click Reconnect
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Message format emitted
+```json
+{
+  "timestamp": 1731000000000,
+  "range_m": 900.0,
+  "az_deg": 123.4,
+  "el_deg": 12.3
+}
 ```
+
+The app converts these readings, using the Observer (LiDAR) geodetic location, into global coordinates and renders them as the blue marker and red ground-to-target rays.
