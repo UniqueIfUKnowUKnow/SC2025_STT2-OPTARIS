@@ -16,6 +16,7 @@ from scanning import *
 from datetime import datetime
 from zigzag import perform_targeted_scan
 from coordinate_transfer import *
+from generate_tle import generate_mock_tle
 
 
 # --- WebSocket Bridge (React UI) ---
@@ -499,23 +500,62 @@ def main():
                 #     save_calibration_data(plot_data)
                 
                 # Optional: Save phase history for analysis
-                if len(phase_history) > 1:
-                    phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    phase_filename = f"phase_tracking_{timestamp}.csv"
+                # if len(phase_history) > 1:
+                #     phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
+                #     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                #     phase_filename = f"phase_tracking_{timestamp}.csv"
+                #     try:
+                #         with open(phase_filename, 'w', newline='') as csvfile:
+                #             writer = csv.writer(csvfile)
+                #             writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
+                #             for row in phase_data:
+                #                 writer.writerow(row)
+                #         print(f"✓ Phase tracking data saved to: {phase_filename}")
+                #     except Exception as e:
+                #         print(f"✗ Error saving phase data: {e}")
+                
+                if len(phase_history) > 5 and cos_base is not None and sin_base is not None and n_hat is not None:
                     try:
-                        with open(phase_filename, 'w', newline='') as csvfile:
-                            writer = csv.writer(csvfile)
-                            writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
-                            for row in phase_data:
-                                writer.writerow(row)
-                        print(f"✓ Phase tracking data saved to: {phase_filename}")
+                        # Generate the mock TLE
+                        sat_name, mock_line1, mock_line2 = generate_mock_tle(
+                            cos_base=cos_base,
+                            sin_base=sin_base, 
+                            n_hat=n_hat,
+                            phase_filter=phase_filter,
+                            first_scan_times=first_scan_times,
+                            satellite_name="TRACKED_DRONE"
+                        )
+                        
+                        # Save mock TLE to file
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        tle_filename = f"mock_tle_{timestamp}.txt"
+                        
+                        with open(tle_filename, 'w') as f:
+                            f.write(f"{sat_name}\n")
+                            f.write(f"{mock_line1}\n") 
+                            f.write(f"{mock_line2}\n")
+                        
+                        print(f"✓ Mock TLE saved to: {tle_filename}")
+                        
+                        # Push to UI if available
+                        _safe_push({
+                            "mock_tle": {
+                                "name": sat_name,
+                                "line1": mock_line1,
+                                "line2": mock_line2,
+                                "filename": tle_filename
+                            }
+                        })
+                        
                     except Exception as e:
-                        print(f"✗ Error saving phase data: {e}")
+                        print(f"✗ Error generating mock TLE: {e}")
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
                 scan_tilt = current_elevation
                 anomaly_count = 0
+                
                 current_state = states[1]
+                
+            
                 
                 
     except KeyboardInterrupt:
