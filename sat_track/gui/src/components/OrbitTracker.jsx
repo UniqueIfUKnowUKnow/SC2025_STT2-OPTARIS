@@ -87,37 +87,51 @@ const Axes = () => {
   );
 };
 
-// Satellite marker component with pulsing animation
+// Satellite marker component rendered as 4 red arrows 30° off the surface normal (relative to Earth)
 const SatelliteMarker = ({ position, color, size = 0.8 }) => {
-  const meshRef = useRef();
-  
-  useEffect(() => {
-    if (!meshRef.current) return;
-    
-    const animate = () => {
-      if (meshRef.current) {
-        // Pulsing animation
-        const time = Date.now() * 0.005;
-        meshRef.current.scale.setScalar(1 + Math.sin(time) * 0.3);
-      }
-      requestAnimationFrame(animate);
-    };
-    animate();
-  }, []);
-  
+  const groupRef = useRef();
+
   if (!position) return null;
-  
+
+  // Compute Earth's surface normal at the object (radial from Earth's center)
+  const posVec = new THREE.Vector3(position[0], position[1], position[2]);
+  const normal = posVec.clone().normalize(); // outward normal
+
+  // Build a stable tangent frame (t1, t2) around the normal
+  const worldUp = new THREE.Vector3(0, 1, 0);
+  const refVec = Math.abs(normal.dot(worldUp)) > 0.95 ? new THREE.Vector3(1, 0, 0) : worldUp.clone();
+  const t1 = refVec.clone().sub(normal.clone().multiplyScalar(refVec.dot(normal))).normalize();
+  const t2 = new THREE.Vector3().crossVectors(normal, t1).normalize();
+
+  const theta = Math.PI / 6; // 30 degrees in radians
+  const offsetDistance = Math.max(size * 3, 0.6);
+  const arrowLength = Math.max(size * 2.5, 0.5);
+  const headLength = arrowLength * 0.6;
+  const headWidth = arrowLength * 0.3;
+
+  // Four tilt directions around the normal
+  const tiltDirs = [
+    t1.clone(),
+    t1.clone().multiplyScalar(-1),
+    t2.clone(),
+    t2.clone().multiplyScalar(-1),
+  ];
+
+  // Arrow vectors tilted 30° from inward normal (-normal) toward each tilt direction
+  const arrows = tiltDirs.map((tilt) => {
+    const v = normal.clone().multiplyScalar(-Math.cos(theta)).add(tilt.clone().multiplyScalar(Math.sin(theta))).normalize();
+    // Place origin outside the object (opposite of inward-tilted vector) and point inward
+    const origin = v.clone().multiplyScalar(-offsetDistance);
+    const dir = v.clone().normalize();
+    return { origin, dir };
+  });
+
   return (
-    <mesh ref={meshRef} position={position}>
-      <sphereGeometry args={[size, 16, 16]} />
-      <meshStandardMaterial 
-        color={color} 
-        emissive={color} 
-        emissiveIntensity={0.5}
-        transparent
-        opacity={0.9}
-      />
-    </mesh>
+    <group ref={groupRef} position={position}>
+      {arrows.map((a, idx) => (
+        <arrowHelper key={idx} args={[a.dir, a.origin, arrowLength, '#ff0000', headLength, headWidth]} />
+      ))}
+    </group>
   );
 };
 
@@ -127,13 +141,18 @@ const OrbitPath = ({ satelliteRec, currentTime }) => {
     if (!satelliteRec || !currentTime) return [];
     
     const points = [];
-    const orbitPeriod = 93; // ISS orbit period in minutes
-    const numPoints = 300; // More points for smoother orbit
+    const meanMotionRadPerMin = satelliteRec?.no; // radians per minute
+    const orbitPeriod = (typeof meanMotionRadPerMin === 'number' && meanMotionRadPerMin > 0)
+      ? (2 * Math.PI) / meanMotionRadPerMin
+      : 93; // fallback in minutes
+    const numPoints = Math.min(1000, Math.max(200, Math.floor(orbitPeriod * 3)));
     
     // Generate orbit path for one complete orbit
     for (let i = 0; i < numPoints; i++) {
-      const timeOffset = (i / numPoints) * orbitPeriod * 60 * 1000; // Convert to milliseconds
-      const futureTime = new Date(currentTime.getTime() - (orbitPeriod * 30 * 1000) + timeOffset); // Start from 30 minutes ago
+      const timeOffsetMs = (i / numPoints) * orbitPeriod * 60 * 1000; // minutes -> ms
+      const futureTime = new Date(
+        currentTime.getTime() - (orbitPeriod * 0.5 * 60 * 1000) + timeOffsetMs
+      ); // start half an orbit in the past
       
       try {
         const positionAndVelocity = satellite.propagate(satelliteRec, futureTime);
@@ -208,7 +227,7 @@ const SATELLITE_TLES = {
   'ISS': {
     name: 'International Space Station',
     tle1: "1 25544U 98067A   24001.00000000  .00002182  00000-0  40768-4 0  9990",
-    tle2: "2 25544  51.6461 339.2971 0002829  68.7676 291.3964 15.48919103123456"
+    tle2: "2 25544  51.6461 339.2971 0002829  68.7676 291.3964 15.48919103123456",
   }
 };
 
@@ -275,12 +294,17 @@ const MultiSatelliteOrbits = ({ satellites, currentTime }) => {
       if (!sat.rec) return;
       
       const points = [];
-      const orbitPeriod = 90; // Approximate period in minutes
-      const numPoints = 200;
+      const meanMotionRadPerMin = sat.rec?.no; // radians per minute
+      const orbitPeriod = (typeof meanMotionRadPerMin === 'number' && meanMotionRadPerMin > 0)
+        ? (2 * Math.PI) / meanMotionRadPerMin
+        : 90; // fallback in minutes
+      const numPoints = Math.min(1000, Math.max(200, Math.floor(orbitPeriod * 3)));
       
       for (let i = 0; i < numPoints; i++) {
-        const timeOffset = (i / numPoints) * orbitPeriod * 60 * 1000;
-        const futureTime = new Date(currentTime.getTime() - (orbitPeriod * 30 * 1000) + timeOffset);
+        const timeOffsetMs = (i / numPoints) * orbitPeriod * 60 * 1000;
+        const futureTime = new Date(
+          currentTime.getTime() - (orbitPeriod * 0.5 * 60 * 1000) + timeOffsetMs
+        );
         
         try {
           const positionAndVelocity = satellite.propagate(sat.rec, futureTime);
@@ -434,6 +458,9 @@ const Scene3D = ({
 const ControlPanel = ({ 
   status, 
   wsStatus,
+  satellites,
+  selectedSatelliteId,
+  onSelectedSatelliteChange,
   wsUrl,
   onWsUrlChange,
   onReconnect,
@@ -453,29 +480,38 @@ const ControlPanel = ({
   measuredPosition, 
   onClearMeasuredPath 
 }) => {
+  const selectedSat = satellites?.[selectedSatelliteId];
+  const derivedStatus = selectedSat?.source === 'ws' ? `TLE WS: ${tleWsStatus}` : 'Static TLE';
+  const derivedDataLink = selectedSat?.source === 'ws' ? tleWsStatus : wsStatus;
   return (
     <div className="control-panel">
       <div className="info-box">
         <h3>Tracking Info</h3>
         <div className="info-item">
           <label>Status:</label>
-          <span>{status}</span>
+          <span>{derivedStatus}</span>
         </div>
         <div className="info-item">
           <label>Data Link:</label>
-          <span>{wsStatus}</span>
+          <span>{derivedDataLink}</span>
         </div>
         <div className="info-item">
           <label>Satellite:</label>
-          <span>ISS (25544)</span>
+          <select
+            value={selectedSatelliteId}
+            onChange={(e) => onSelectedSatelliteChange(e.target.value)}
+          >
+            {Object.entries(satellites).map(([id, s]) => (
+              <option key={id} value={id}>{s.name || id}</option>
+            ))}
+          </select>
         </div>
         <div className="info-item">
           <label>Current Position (km):</label>
           <span>
             {predictedPosition 
               ? `${(predictedPosition[0] / SCALE_FACTOR).toFixed(0)}, ${(predictedPosition[1] / SCALE_FACTOR).toFixed(0)}, ${(predictedPosition[2] / SCALE_FACTOR).toFixed(0)}`
-              : 'N/A'
-            }
+              : 'N/A'}
           </span>
         </div>
         <div className="info-item">
@@ -483,6 +519,9 @@ const ControlPanel = ({
           <span>🟠 Orange = Predicted (TLE)<br/>🔵 Blue = Measured (LiDAR)<br/>🟢 Green = Orbit path<br/>🔴 Red = Ground-to-target rays</span>
         </div>
       </div>
+      
+      
+      {/* WebSocket menu
       
       <div className="info-box">
         <h3>WebSocket</h3>
@@ -496,7 +535,7 @@ const ControlPanel = ({
           />
         </div>
         <button className="clear-button" onClick={onReconnect}>Reconnect</button>
-      </div>
+      </div> */}
 
       <div className="info-box">
         <h3>TLE WebSocket</h3>
@@ -510,32 +549,38 @@ const ControlPanel = ({
             style={{ width: '100%' }}
             value={tleWsUrl}
             onChange={(e) => onTleWsUrlChange(e.target.value)}
-            placeholder="ws://raspberrypi.local:8770"
+            placeholder="ws://your.target.ip.address:nnnn" /* url to tle websocket */
           />
         </div>
         <button className="clear-button" onClick={onTleReconnect}>Reconnect</button>
       </div>
 
+      {/* Observer (LiDAR) Location menu
+      
       <div className="info-box">
         <h3>Observer (LiDAR) Location</h3>
         <div className="info-item"><label>Lat (deg):</label><input type="number" step="0.0001" value={observerLat} onChange={(e)=>onObserverChange({ lat: parseFloat(e.target.value) })} /></div>
         <div className="info-item"><label>Lon (deg):</label><input type="number" step="0.0001" value={observerLon} onChange={(e)=>onObserverChange({ lon: parseFloat(e.target.value) })} /></div>
         <div className="info-item"><label>Alt (km):</label><input type="number" step="0.001" value={observerAltKm} onChange={(e)=>onObserverChange({ altKm: parseFloat(e.target.value) })} /></div>
-      </div>
+      </div> */}
 
+      {/* TLE menu
+      
       <div className="info-box">
         <h3>TLE</h3>
         <div className="info-item"><label>Line 1</label><input style={{ width: '100%' }} value={tle1} onChange={(e)=>onTleChange(1, e.target.value)} /></div>
         <div className="info-item"><label>Line 2</label><input style={{ width: '100%' }} value={tle2} onChange={(e)=>onTleChange(2, e.target.value)} /></div>
         <button className="clear-button" onClick={onApplyTle}>Apply TLE</button>
-      </div>
+      </div> */}
 
+      {/* Clear Measured Path button
+      
       <button 
         className="clear-button"
         onClick={onClearMeasuredPath}
       >
         Clear Measured Path
-      </button>
+      </button> */}
     </div>
   );
 };
@@ -552,7 +597,7 @@ const OrbitTracker = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [wsUrl, setWsUrl] = useState('ws://raspberrypi.local:8765');
   const wsRef = useRef(null);
-  const [tleWsUrl, setTleWsUrl] = useState('ws://raspberrypi.local:8770');
+  const [tleWsUrl, setTleWsUrl] = useState('ws://192.168.55.254:8770');
   const tleWsRef = useRef(null);
   const [observer, setObserver] = useState({ lat: 37.7749, lon: -122.4194, altKm: 0.02 });
   const [tle, setTle] = useState({
@@ -561,6 +606,7 @@ const OrbitTracker = () => {
   });
   // Removed manual points and Kalman filter state
   const [satellites, setSatellites] = useState({});
+  const [selectedSatelliteId, setSelectedSatelliteId] = useState('ISS');
 
   // Initialize multiple satellites from TLEs
   useEffect(() => {
@@ -572,7 +618,8 @@ const OrbitTracker = () => {
           ...satData,
           rec,
           position: null,
-          color: id === 'ISS' ? '#ff6b35' : '#ffffff'
+          color: id === 'ISS' ? '#ff6b35' : '#ffffff',
+          source: 'static'
         };
       } catch (error) {
         console.error(`Error initializing satellite ${id}:`, error);
@@ -604,10 +651,12 @@ const OrbitTracker = () => {
           console.warn(`Error updating position for ${id}:`, error);
         }
       });
-      
+    
       setSatellites(updatedSatellites);
-      // Also expose ISS position as predictedPosition for UI display
-      if (updatedSatellites.ISS?.position) {
+      // Expose selected satellite position for UI display
+      if (selectedSatelliteId && updatedSatellites[selectedSatelliteId]?.position) {
+        setPredictedPosition(updatedSatellites[selectedSatelliteId].position);
+      } else if (updatedSatellites.ISS?.position) {
         setPredictedPosition(updatedSatellites.ISS.position);
       }
     };
@@ -616,7 +665,7 @@ const OrbitTracker = () => {
     updatePositions();
 
     return () => clearInterval(interval);
-  }, [satellites]);
+  }, [satellites, selectedSatelliteId]);
 
   // TLE WebSocket: receive dynamic TLE updates (e.g., Drone) and add/update satellites
   useEffect(() => {
@@ -639,7 +688,8 @@ const OrbitTracker = () => {
               tle2,
               rec,
               position: prev[id]?.position ?? null,
-              color: prev[id]?.color ?? '#ffffff'
+              color: prev[id]?.color ?? '#ffffff',
+              source: 'ws'
             }
           }));
         } catch (e) {
@@ -729,6 +779,9 @@ const OrbitTracker = () => {
         <ControlPanel
           status={status}
           wsStatus={wsStatus}
+          satellites={satellites}
+          selectedSatelliteId={selectedSatelliteId}
+          onSelectedSatelliteChange={setSelectedSatelliteId}
           wsUrl={wsUrl}
           onWsUrlChange={setWsUrl}
           onReconnect={reconnectWs}

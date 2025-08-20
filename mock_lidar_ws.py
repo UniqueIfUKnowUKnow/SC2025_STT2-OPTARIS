@@ -1,30 +1,125 @@
 #!/usr/bin/env python3
-import asyncio, json, os, time
+import asyncio
+import json
+import os
+import time
+from typing import Tuple
+
 import websockets
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8770"))
-TLE1 = os.getenv("DRONE_TLE1", "1 00000U 00000A   25001.00000000  .00000000  00000-0  00000-0 0  9991")
-TLE2 = os.getenv("DRONE_TLE2", "2 00000  98.0000  10.0000 0010000  10.0000 350.0000 14.00000000100001")
 
-async def client_handler(ws):
-    while True:
-        await ws.send(json.dumps({
+# Optional: path to a TLE file that another process updates.
+# The file should contain exactly two lines: TLE1 and TLE2.
+TLE_PATH = os.getenv("TLE_PATH", "drone.tle")
+
+# Initial values (used until the file provides newer values)
+TLE1 = os.getenv(
+    "DRONE_TLE1",
+    "1 00000U 00000A   25001.00000000  .00000000  00000-0  00000-0 0  9991",
+)
+TLE2 = os.getenv(
+    "DRONE_TLE2",
+    "2 00000  98.0000  10.0000 0010000  10.0000 350.0000 14.00000000100001",
+)
+
+CLIENTS = set()
+
+
+def _read_tle_file(path: str) -> Tuple[str, str]:
+    """Read two-line TLE from file. Returns (tle1, tle2).
+    Raises FileNotFoundError or ValueError if not valid.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        lines = [ln.strip() for ln in f.read().splitlines() if ln.strip()]
+    if len(lines) < 2:
+        raise ValueError("TLE file must contain at least two non-empty lines")
+    return lines[0], lines[1]
+
+
+async def broadcast_tle(tle1: str, tle2: str):
+    """Send current TLE to all connected clients."""
+    if not CLIENTS:
+        return
+    msg = json.dumps(
+        {
             "type": "tle_update",
             "id": "Drone",
             "name": "Drone",
-            "tle1": TLE1,
-            "tle2": TLE2,
+            "tle1": tle1,
+            "tle2": tle2,
             "timestamp": int(time.time() * 1000),
-        }))
-        await asyncio.sleep(5)
+        }
+    )
+    to_remove = []
+    for ws in list(CLIENTS):
+        try:
+            await ws.send(msg)
+        except Exception:
+            to_remove.append(ws)
+    for ws in to_remove:
+        try:
+            CLIENTS.remove(ws)
+        except KeyError:
+            pass
+
+
+async def tle_file_watcher(path: str, poll_sec: float = 1.0):
+    """Watch a TLE file and broadcast whenever the content changes."""
+    global TLE1, TLE2
+    last_content = (TLE1, TLE2)
+    last_mtime = None
+
+    while True:
+        try:
+            stat = os.stat(path)
+            mtime = stat.st_mtime
+            if last_mtime is None or mtime != last_mtime:
+                tle1, tle2 = _read_tle_file(path)
+                last_mtime = mtime
+                if (tle1, tle2) != last_content:
+                    TLE1, TLE2 = tle1, tle2
+                    last_content = (tle1, tle2)
+                    await broadcast_tle(TLE1, TLE2)
+        except FileNotFoundError:
+            # File not present yet; ignore and retry
+            pass
+        except Exception:
+            # Ignore malformed/partial writes and retry next tick
+            pass
+        await asyncio.sleep(poll_sec)
+
+
+async def client_handler(ws):
+    CLIENTS.add(ws)
+    try:
+        # Send the current TLE immediately on connect
+        await broadcast_tle(TLE1, TLE2)
+        await ws.wait_closed()
+    finally:
+        try:
+            CLIENTS.remove(ws)
+        except KeyError:
+            pass
+
 
 async def main():
-    async with websockets.serve(client_handler, HOST, PORT):
-        await asyncio.Future()
+    server = websockets.serve(client_handler, HOST, PORT)
+    async with server:
+        # Start watcher task in background
+        watcher = asyncio.create_task(tle_file_watcher(TLE_PATH, poll_sec=0.5))
+        try:
+            await asyncio.Future()  # run forever
+        finally:
+            watcher.cancel()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
 
 
 
