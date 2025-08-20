@@ -132,7 +132,6 @@ if __name__ == "__main__":
 #         asyncio.run(main())
 #     except KeyboardInterrupt:
 #         pass
-<<<<<<< HEAD
 
 
 
@@ -228,5 +227,3 @@ if __name__ == "__main__":
 #         asyncio.run(main())
 #     except KeyboardInterrupt:
 #         pass
-=======
->>>>>>> 86c9692b5619842ddd1ef2524c6b4131a876adbc
