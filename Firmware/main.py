@@ -310,7 +310,7 @@ def main():
                 
                 while tracking_iteration < max_tracking_iterations and current_azimuth < 200:
 
-                    LOOP_PERIOD = 0.1  # 10 Hz
+                    LOOP_PERIOD = 0.07  # 10 Hz
                     loop_start = time.time()
                     tracking_iteration += 1
                     # print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
@@ -372,14 +372,18 @@ def main():
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
                     # MEASUREMENT STEP - scan at predicted location
-                    current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
-                            pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
-                            end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
-                            anomaly_averaged_coords, anomaly_count, detections_required)
+                    # current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
+                    #         pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
+                    #         end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
+                    #         anomaly_averaged_coords, anomaly_count, detections_required)
+                    current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_found = perform_continuous_servo_scan(
+                            pi, lidar_data_queue, calibration_data, 
+                            current_azimuth, current_elevation, stepper_steps,
+                            end_elevation, start_elevation, 1 , 900)
                     
-                    if anomaly_found and anomaly_measured:
+                    # if anomaly_found and anomaly_measured:
                         # Get the most recent detection
-                        anomaly_measured = list(anomaly_measured[-1][0])
+                        # anomaly_measured = list(anomaly_measured[-1][0])
                     
                     if not anomaly_found:
                         # Expand search if target not found at prediction with individual ranges
@@ -395,18 +399,34 @@ def main():
                         start_elevation = np.degrees(tilt_pred) - elevation_range/2
                         end_elevation = np.degrees(tilt_pred) + elevation_range/2
                         
-                        current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
-                            pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
-                            end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
-                            anomaly_averaged_coords, anomaly_count, detections_required)
-                        if anomaly_found and anomaly_measured:
+                        # current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
+                        #     pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
+                        #     end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
+                        #     anomaly_averaged_coords, anomaly_count, detections_required)
+                        current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_found = perform_continuous_servo_scan(
+                            pi, lidar_data_queue, calibration_data, 
+                            current_azimuth, current_elevation, stepper_steps,
+                            end_elevation, start_elevation, 1 ,900)
+                        # if anomaly_found and anomaly_measured:
                             # Get the most recent detection
-                            anomaly_measured = list(anomaly_measured[-1][0])
+                            # anomaly_measured = list(anomaly_measured[-1][0])
 
                     if anomaly_found:
-                        print(f"TARGET FOUND at Az={anomaly_measured[1]:.1f}°, El={anomaly_measured[2]:.1f}°")
+                        # print(f"TARGET FOUND at Az={anomaly_measured[1]:.1f}°, El={anomaly_measured[2]:.1f}°")
                         # Push live telemetry and trajectory point to UI
                         try:
+                            
+                            if isinstance(anomaly_measured[0], tuple):
+                                distance_m = float(anomaly_measured[0][0])
+                                az_deg = float(anomaly_measured[0][1])
+                                el_deg = float(anomaly_measured[0][2])
+                                raw_ts = anomaly_measured[0][3] if len(anomaly_measured[0]) > 3 else time.time()
+                            else:
+                                distance_m = float(anomaly_measured[0])
+                                az_deg = float(anomaly_measured[1])
+                                el_deg = float(anomaly_measured[2])
+                                raw_ts = anomaly_measured[3] if len(anomaly_measured) > 3 else time.time()
+                                                        
                             distance_m = float(anomaly_measured[0])
                             az_deg = float(anomaly_measured[1])
                             el_deg = float(anomaly_measured[2])
@@ -438,8 +458,12 @@ def main():
                         # UPDATE STEP (convert measurement to phase space, then update filter)
                         
                         # Convert measured az/el to unit vector
-                        azi_meas_rad = np.radians(anomaly_measured[1])
-                        tilt_meas_rad = np.radians(anomaly_measured[2])
+                        if len(anomaly_measured) >= 3:
+                            azi_meas_rad = np.radians(anomaly_measured[1])
+                            tilt_meas_rad = np.radians(anomaly_measured[2])
+                        else:
+                            print("Error: anomaly_measured has insufficient data")
+                            continue  # Skip this iteration
                         u_meas = angles_to_unit(azi_meas_rad, tilt_meas_rad).flatten()
                         
                         # Convert measured unit vector to phase (always wrapped)
@@ -501,19 +525,19 @@ def main():
                 #     save_calibration_data(plot_data)
                 
                 # Optional: Save phase history for analysis
-                # if len(phase_history) > 1:
-                #     phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
-                #     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                #     phase_filename = f"phase_tracking_{timestamp}.csv"
-                #     try:
-                #         with open(phase_filename, 'w', newline='') as csvfile:
-                #             writer = csv.writer(csvfile)
-                #             writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
-                #             for row in phase_data:
-                #                 writer.writerow(row)
-                #         print(f"✓ Phase tracking data saved to: {phase_filename}")
-                #     except Exception as e:
-                #         print(f"✗ Error saving phase data: {e}")
+                if len(phase_history) > 1:
+                    phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    phase_filename = f"phase_tracking_{timestamp}.csv"
+                    try:
+                        with open(phase_filename, 'w', newline='') as csvfile:
+                            writer = csv.writer(csvfile)
+                            writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
+                            for row in phase_data:
+                                writer.writerow(row)
+                        print(f"✓ Phase tracking data saved to: {phase_filename}")
+                    except Exception as e:
+                        print(f"✗ Error saving phase data: {e}")
                 
                 if len(phase_history) > 5 and cos_base is not None and sin_base is not None and n_hat is not None:
                     try:
@@ -548,7 +572,7 @@ def main():
                     except Exception as e:
                         print(f"✗ Error generating mock TLE: {e}")
                 print(current_azimuth,tracking_iteration)
-                reset_stepper_pos(stepper_steps_taken)
+                reset_stepper_pos(stepper_steps)
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
                 scan_tilt = current_elevation
                 anomaly_count = 0
