@@ -318,7 +318,8 @@ const MultiSatelliteOrbits = ({ satellites, currentTime }) => {
       }
       
       if (points.length > 1) {
-        paths.push({ id, points, color: sat.color });
+        // Include version in key so React remounts line when TLE changes
+        paths.push({ id: `${id}-v${sat.version ?? 0}`, points, color: sat.color });
       }
     });
     
@@ -384,7 +385,7 @@ const Scene3D = ({
         {/* Satellite markers with labels */}
         {Object.entries(satellites).map(([id, sat]) => (
           <LabeledHexagonMarker 
-            key={id}
+            key={`${id}-v${sat.version ?? 0}`}
             position={sat.position} 
             name={sat.name}
             color={sat.color} 
@@ -680,18 +681,44 @@ const OrbitTracker = () => {
         try {
           const { id = 'Drone', name = 'Drone', tle1, tle2 } = data;
           const rec = satellite.twoline2satrec(tle1, tle2);
-          setSatellites(prev => ({
-            ...prev,
-            [id]: {
-              name,
-              tle1,
-              tle2,
-              rec,
-              position: prev[id]?.position ?? null,
-              color: prev[id]?.color ?? '#ffffff',
-              source: 'ws'
+          setSatellites(prev => {
+            const prevSat = prev[id];
+            const tleChanged = !prevSat || prevSat.tle1 !== tle1 || prevSat.tle2 !== tle2;
+            const nextVersion = tleChanged ? ((prevSat?.version ?? 0) + 1) : (prevSat?.version ?? 0);
+            const defaultColor = (
+              id === 'Drone' ? '#4e9cff' :
+              id === 'DroneInitial' ? '#ffcc00' : '#ffffff'
+            );
+            let nextPosition = prevSat?.position ?? null;
+            if (tleChanged) {
+              try {
+                const now = new Date();
+                const pv = satellite.propagate(rec, now);
+                if (pv.position && !pv.position.error) {
+                  const cart = convertEciToCartesian(pv.position);
+                  nextPosition = cart;
+                } else {
+                  nextPosition = null;
+                }
+              } catch (_) {
+                nextPosition = null;
+              }
             }
-          }));
+            return {
+              ...prev,
+              [id]: {
+                name,
+                tle1,
+                tle2,
+                rec,
+                // Set immediate position if we could propagate, else keep prior or null
+                position: nextPosition,
+                color: prevSat?.color ?? defaultColor,
+                source: 'ws',
+                version: nextVersion,
+              }
+            };
+          });
         } catch (e) {
           console.error('Invalid TLE received:', e);
         }

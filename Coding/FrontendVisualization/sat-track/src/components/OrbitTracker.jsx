@@ -210,7 +210,7 @@ const SATELLITE_TLES = {
   }
 };
 
-// Labeled hexagon marker component for satellites (NASA Eyes style)
+// Labeled hexagon marker component for satellites
 const LabeledHexagonMarker = ({ position, name, color, size = 0.15 }) => {
   if (!position) return null;
   
