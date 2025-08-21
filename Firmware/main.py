@@ -238,7 +238,7 @@ def main():
 
             
             elif current_state == "DETECTED":
-                
+                miss_counter = 0
                 anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
                 first_scan_pos = coords_array[:, :3]
@@ -310,7 +310,7 @@ def main():
                 
                 while tracking_iteration < max_tracking_iterations and current_azimuth < 200:
 
-                    LOOP_PERIOD = 0.07  # 10 Hz
+                    LOOP_PERIOD = 0.1  # 10 Hz
                     loop_start = time.time()
                     tracking_iteration += 1
                     # print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
@@ -378,7 +378,7 @@ def main():
                     #         anomaly_averaged_coords, anomaly_count, detections_required)
                     current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_found = perform_continuous_servo_scan(
                             pi, lidar_data_queue, calibration_data, 
-                            current_azimuth, current_elevation, stepper_steps,
+                            end_azimuth, current_elevation, stepper_steps,
                             end_elevation, start_elevation, 1 , 900)
                     
                     # if anomaly_found and anomaly_measured:
@@ -386,6 +386,7 @@ def main():
                         # anomaly_measured = list(anomaly_measured[-1][0])
                     
                     if not anomaly_found:
+                        miss_counter += 1
                         # Expand search if target not found at prediction with individual ranges
                         base_search_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))
                         azimuth_range = base_search_deg * AZI_EXPANSION_FACTOR  #  azimuth search
@@ -403,29 +404,35 @@ def main():
                         #     pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                         #     end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
                         #     anomaly_averaged_coords, anomaly_count, detections_required)
+                        
                         current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_found = perform_continuous_servo_scan(
                             pi, lidar_data_queue, calibration_data, 
-                            current_azimuth, current_elevation, stepper_steps,
+                            end_azimuth, current_elevation, stepper_steps,
                             end_elevation, start_elevation, 1 ,900)
                         # if anomaly_found and anomaly_measured:
                             # Get the most recent detection
                             # anomaly_measured = list(anomaly_measured[-1][0])
 
-                    if anomaly_found:
-                        # print(f"TARGET FOUND at Az={anomaly_measured[1]:.1f}°, El={anomaly_measured[2]:.1f}°")
-                        # Push live telemetry and trajectory point to UI
-                        try:
-                            
-                            if isinstance(anomaly_measured[0], tuple):
-                                distance_m = float(anomaly_measured[0][0])
-                                az_deg = float(anomaly_measured[0][1])
-                                el_deg = float(anomaly_measured[0][2])
-                                raw_ts = anomaly_measured[0][3] if len(anomaly_measured[0]) > 3 else time.time()
+                    if anomaly_found and anomaly_measured:
+                        miss_counter = 0
+                        if anomaly_measured:  # anomaly_measured is a list of detections
+                            latest_detection = anomaly_measured[-1]  # Get last detection
+                            if isinstance(latest_detection, tuple):
+                                # It's already a tuple: (distance, azimuth, elevation, timestamp)
+                                anomaly_measured = latest_detection
                             else:
+                                # It's still nested: extract the tuple from the list
+                                anomaly_measured = latest_detection[0] if len(latest_detection) > 0 else None
+
+                        try:
+                            if anomaly_measured and len(anomaly_measured) >= 3:
                                 distance_m = float(anomaly_measured[0])
-                                az_deg = float(anomaly_measured[1])
+                                az_deg = float(anomaly_measured[1]) 
                                 el_deg = float(anomaly_measured[2])
-                                raw_ts = anomaly_measured[3] if len(anomaly_measured) > 3 else time.time()
+                                raw_ts = float(anomaly_measured[3]) if len(anomaly_measured) > 3 else time.time()
+                            else:
+                                print(f"Warning: Invalid anomaly_measured format: {anomaly_measured}")
+                                continue
                                                         
                             distance_m = float(anomaly_measured[0])
                             az_deg = float(anomaly_measured[1])
@@ -458,9 +465,9 @@ def main():
                         # UPDATE STEP (convert measurement to phase space, then update filter)
                         
                         # Convert measured az/el to unit vector
-                        if len(anomaly_measured) >= 3:
-                            azi_meas_rad = np.radians(anomaly_measured[1])
-                            tilt_meas_rad = np.radians(anomaly_measured[2])
+                        if anomaly_measured and len(anomaly_measured) >= 3:
+                            azi_meas_rad = np.radians(float(anomaly_measured[1]))
+                            tilt_meas_rad = np.radians(float(anomaly_measured[2]))
                         else:
                             print("Error: anomaly_measured has insufficient data")
                             continue  # Skip this iteration
@@ -468,7 +475,7 @@ def main():
                         
                         # Convert measured unit vector to phase (always wrapped)
                         phase_meas_wrapped = phase_from_unit(u_meas, cos_base, sin_base)
-
+                        
                         # Unwrap the measured phase relative to the predicted phase
                         # Find the equivalent wrapped version of predicted phase
                         phase_pred_wrapped = wrap_to_pi(phase_pred)
@@ -477,9 +484,6 @@ def main():
                         raw_diff = phase_meas_wrapped - phase_pred_wrapped
                         phase_residual = wrap_to_pi(raw_diff)  # Keep residual small
                         
-                        print(f"Phase measurement and update:")
-                        print(f"  Measured phase: s_meas = {np.degrees(phase_pred_wrapped):.1f}° (wrapped)")
-                        print(f"  Phase residual: Δs = {np.degrees(phase_residual):.2f}°")
                         
                         # α-β filter update in phase space
                         phase_updated = phase_pred + ALPHA_PHASE * phase_residual
@@ -493,10 +497,7 @@ def main():
                         phase_history.append(phase_updated)
                         time_history.append(t_last)
                         
-                        print(f"Filter update:")
-                        print(f"  Updated phase: s = {np.degrees(phase_updated):.1f}° (unwrapped)")
-                        print(f"  Updated rate: Ω = {np.degrees(phase_rate_updated):.3f} deg/s")
-                        print(f"  Phase history length: {len(phase_history)}")
+                        print(phase_updated, phase_rate_updated)
                         
                         # Store tracking data for later analysis
                         plot_data.append([anomaly_measured[0], anomaly_measured[1], anomaly_measured[2]])

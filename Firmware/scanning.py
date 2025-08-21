@@ -290,7 +290,7 @@ def perform_continuous_servo_scan(pi, lidar_data_queue, calibration_data, curren
             - anomaly_averaged_coords: List of detected anomaly coordinates
             - anomaly_detected: Boolean indicating if any anomalies were found
     """
-    
+    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth, current_elevation, stepper_steps)
     # Validate input angles
     tilt_min = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, tilt_min))
     tilt_max = max(SERVO_SWEEP_START, min(SERVO_SWEEP_END, tilt_max))
