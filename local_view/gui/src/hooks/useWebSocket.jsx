@@ -5,6 +5,7 @@ const useWebSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(null);
   const [ws, setWs] = useState(null);
+  const MAX_POINTS = 20000;
 
   const disconnect = useCallback(() => {
     if (ws) {
@@ -35,21 +36,88 @@ const useWebSocket = () => {
 
       newWs.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          if (Array.isArray(data)) {
-            const validPoints = data.filter(point => 
-              typeof point === 'object' &&
-              'x' in point &&
-              'y' in point &&
-              'z' in point &&
-              'timestamp' in point &&
-              !isNaN(point.x) &&
-              !isNaN(point.y) &&
-              !isNaN(point.z) &&
-              !isNaN(point.timestamp)
-            );
-            
-            setPoints(prevPoints => [...prevPoints, ...validPoints]);
+          const raw = event.data;
+
+          // Helper to coerce a candidate object into a point or null
+          const asPoint = (obj) => {
+            if (!obj || typeof obj !== 'object') return null;
+            // Support different key casings and numeric strings
+            const x = obj.x ?? obj.X;
+            const y = obj.y ?? obj.Y;
+            const z = obj.z ?? obj.Z;
+            const ts = obj.timestamp ?? obj.time ?? obj.t ?? obj.T;
+            const px = Number(x);
+            const py = Number(y);
+            const pz = Number(z);
+            const pt = Number(ts);
+            if ([px, py, pz, pt].every((v) => Number.isFinite(v))) {
+              return { x: px, y: py, z: pz, timestamp: pt };
+            }
+            return null;
+          };
+
+          const appendPoints = (newPts) => {
+            if (!newPts || newPts.length === 0) return;
+            setPoints((prev) => {
+              const combined = prev.concat(newPts);
+              // Cap buffer to avoid unbounded memory growth
+              return combined.length > MAX_POINTS
+                ? combined.slice(combined.length - MAX_POINTS)
+                : combined;
+            });
+          };
+
+          // Try JSON first
+          try {
+            const data = JSON.parse(raw);
+
+            // Ignore known non-point messages
+            if (data && typeof data === 'object' && data.type && data.type !== 'points') {
+              return;
+            }
+
+            if (Array.isArray(data)) {
+              appendPoints(
+                data
+                  .map(asPoint)
+                  .filter(Boolean)
+              );
+              return;
+            }
+
+            if (data && typeof data === 'object') {
+              if (Array.isArray(data.points)) {
+                appendPoints(
+                  data.points
+                    .map(asPoint)
+                    .filter(Boolean)
+                );
+                return;
+              }
+              const pt = asPoint(data);
+              if (pt) {
+                appendPoints([pt]);
+                return;
+              }
+            }
+          } catch (_) {
+            // Not JSON; try CSV: "x,y,z,timestamp"
+            if (typeof raw === 'string') {
+              const parts = raw.split(',').map((s) => s.trim());
+              if (parts.length === 4) {
+                const [sx, sy, sz, st] = parts;
+                const pt = {
+                  x: Number(sx),
+                  y: Number(sy),
+                  z: Number(sz),
+                  timestamp: Number(st)
+                };
+                if ([pt.x, pt.y, pt.z, pt.timestamp].every((v) => Number.isFinite(v))) {
+                  appendPoints([pt]);
+                  return;
+                }
+              }
+            }
           }
         } catch (err) {
           console.error('Error parsing WebSocket data:', err);

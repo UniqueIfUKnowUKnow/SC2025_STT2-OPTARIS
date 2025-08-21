@@ -136,7 +136,7 @@ const Scene3D = () => {
           type="text"
           value={wsUrl}
           onChange={(e) => setWsUrl(e.target.value)}
-          placeholder="ws://localhost:8080"
+          placeholder="ws://your.target.ip.address:nnnn"
           style={{
             padding: '8px',
             borderRadius: '4px',
