@@ -32,8 +32,6 @@ const convertEciToCartesian = (eciPosition) => {
   ];
 };
 
-
-
 // Enhanced lighting component for realistic space environment
 const SpaceLighting = () => {
   return (
