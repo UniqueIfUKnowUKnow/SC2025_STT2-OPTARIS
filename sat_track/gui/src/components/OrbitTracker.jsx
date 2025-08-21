@@ -513,10 +513,12 @@ const ControlPanel = ({
               : 'N/A'}
           </span>
         </div>
+        {/* Visualization menu
+        
         <div className="info-item">
           <label>Visualization:</label>
           <span>🟠 Orange = Predicted (TLE)<br/>🔵 Blue = Measured (LiDAR)<br/>🟢 Green = Orbit path<br/>🔴 Red = Ground-to-target rays</span>
-        </div>
+        </div> */}
       </div>
       
       

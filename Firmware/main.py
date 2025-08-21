@@ -309,6 +309,9 @@ def main():
                 # print(f"Initial filter state: s = {np.degrees(phase_filter[0]):.1f}°, Ω = {np.degrees(phase_filter[1]):.3f} deg/s")
                 
                 while tracking_iteration < max_tracking_iterations and current_azimuth < 200:
+
+                    LOOP_PERIOD = 0.1  # 10 Hz
+                    loop_start = time.time()
                     tracking_iteration += 1
                     # print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
                     
@@ -322,9 +325,6 @@ def main():
                     # PREDICTION STEP (entirely in phase space)
                     current_time = time.time()
                     dt = current_time - t_last
-                    if dt <= 0 or dt < 0.5:  # Minimum 100ms between updates
-                        dt = 0.5
-                          # Use reasonable default instead of 0.08
                     
                     # Predict next phase using constant angular velocity model
                     phase_pred = phase_filter[0] + phase_filter[1] * dt
@@ -366,8 +366,8 @@ def main():
                     # print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                     
                     # Calculate search area bounds
-                    start_azimuth = np.degrees(azi_pred) 
-                    end_azimuth = np.degrees(azi_pred) 
+                    start_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
+                    end_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
@@ -390,8 +390,8 @@ def main():
                         print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                         
                         # Calculate search area bounds
-                        start_azimuth = np.degrees(azi_pred) 
-                        end_azimuth = np.degrees(azi_pred)   
+                        start_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
+                        end_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
                         start_elevation = np.degrees(tilt_pred) - elevation_range/2
                         end_elevation = np.degrees(tilt_pred) + elevation_range/2
                         
@@ -483,6 +483,10 @@ def main():
                             if abs(phase_span) > 2*np.pi:
                                 print(f"Completed one orbit! Phase span: {np.degrees(phase_span):.1f}°")
                                 # Could break here if you want to stop after one orbit
+
+                    sleep_left = LOOP_PERIOD - (time.time() - loop_start)
+                    if sleep_left > 0:
+                        time.sleep(sleep_left)
                         
                     else:
                         print("TARGET LOST - Could not find target in expanded search area")
