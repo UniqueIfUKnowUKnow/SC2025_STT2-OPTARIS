@@ -106,7 +106,7 @@ async def client_handler(ws):
         # Send the current TLE immediately to the connecting client only
         try:
             if TLE_INIT1 and TLE_INIT2:
-                await ws.send(_build_msg(TLE_INIT1, TLE_INIT2, "DroneInitial", "Drone (Initial)"))
+                await ws.send(_build_msg(TLE_INIT1, TLE_INIT2, "DroneInitial", "Drone (Initial)")) 
             if TLE_DRONE1 and TLE_DRONE2:
                 await ws.send(_build_msg(TLE_DRONE1, TLE_DRONE2, "Drone", "Drone"))
             print(f"[WS] Sent current TLEs to new client ({len(CLIENTS)} total)")
