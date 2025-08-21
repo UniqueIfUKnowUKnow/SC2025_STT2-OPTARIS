@@ -171,7 +171,7 @@ def main():
                 calibration_data = calibrate_environment(pi, lidar_data_queue)
                 print(calibration_data)
                 # save data
-                # save_calibration_data(calibration_data)
+                save_calibration_data(calibration_data)
                 _safe_push({
                     "status": "CALIBRATING",
                     "progress": 100,
@@ -477,7 +477,7 @@ def main():
                         
                         # Store tracking data for later analysis
                         plot_data.append([anomaly_measured[0], anomaly_measured[1], anomaly_measured[2]])
-                        
+
                         # Optional: Check for convergence or orbit completion
                         if len(phase_history) > 10:
                             phase_span = phase_history[-1] - phase_history[0]
@@ -494,8 +494,7 @@ def main():
                         
                 
                 # print("Phase-space tracking complete. Saving trajectory data...")
-                # if plot_data:
-                #     save_calibration_data(plot_data)
+                
                 
                 # Optional: Save phase history for analysis
                 # if len(phase_history) > 1:
