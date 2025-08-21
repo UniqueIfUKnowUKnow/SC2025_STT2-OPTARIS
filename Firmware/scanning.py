@@ -386,7 +386,7 @@ def perform_continuous_servo_scan(pi, lidar_data_queue, calibration_data, curren
                     progress = (step_idx / num_steps) * 100
         
         # Process anomalies after each complete cycle
-        if len(anomaly_locations) >= 3:
+        if len(anomaly_locations) >= 4:
             # Calculate average of the anomaly group
             avg_anomaly = [sum(col) / len(col) for col in zip(*anomaly_locations)]
             avg_anomaly = [round(val, 2) for val in avg_anomaly]

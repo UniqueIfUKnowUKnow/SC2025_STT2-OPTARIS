@@ -80,7 +80,7 @@ def main():
     if not pi.connected:
         print("Could not connect to pigpio daemon. Is it running?")
         return
-    GPIO.output(DIR_PIN, GPIO.HIGH)
+    GPIO.output(DIR_PIN, GPIO.LOW)
     
 
     servo_angle = SERVO_SWEEP_START
@@ -248,7 +248,7 @@ def main():
                 
                 # RESET DIRECTION PIN TO KNOWN STATE BEFORE TRACKING
                 # print("Resetting direction pin to known state for tracking...")
-                GPIO.output(DIR_PIN, GPIO.HIGH)
+                GPIO.output(DIR_PIN, GPIO.LOW)
                 time.sleep(0.002)  # Allow direction to settle
                 
                 # Convert degrees to radians
@@ -378,6 +378,7 @@ def main():
                             pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                             end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
                             anomaly_averaged_coords, anomaly_count, detections_required)
+                    time.sleep(0.1)
                     if anomaly_found and anomaly_measured:
                         # Get the most recent detection
                         anomaly_measured = list(anomaly_measured[-1][0])
@@ -545,6 +546,7 @@ def main():
                     except Exception as e:
                         print(f"✗ Error generating mock TLE: {e}")
                 print(current_azimuth,tracking_iteration)
+                reset_stepper_pos(stepper_steps_taken)
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
                 scan_tilt = current_elevation
                 anomaly_count = 0

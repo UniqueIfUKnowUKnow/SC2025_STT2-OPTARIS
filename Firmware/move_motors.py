@@ -81,11 +81,11 @@ def move_to_polar_position(pi, target_azimuth, target_elevation, current_azimuth
     if steps_to_move != 0:
         # Set direction
         if steps_to_move > 0:
-            GPIO.output(DIR_PIN, GPIO.HIGH)  # Clockwise
+            GPIO.output(DIR_PIN, GPIO.LOW)  # Clockwise
             direction = "CW"
             # print(f"Setting direction: CLOCKWISE (HIGH)")
         else:
-            GPIO.output(DIR_PIN, GPIO.LOW)   # Counter-clockwise
+            GPIO.output(DIR_PIN, GPIO.HIGH)   # Counter-clockwise
             direction = "CCW"
             # print(f"Setting direction: COUNTER-CLOCKWISE (LOW)")
         
