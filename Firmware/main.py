@@ -291,7 +291,7 @@ def main():
                 # If azimuth is increasing but angular speed is negative, fix the coordinate system
                 # If azimuth is increasing but angular speed is negative, fix the coordinate system
 
-
+                
                 print(f"CORRECTED: Angular speed = {np.degrees(angular_speed):.2f} deg/s")
 
                 # Initialize tracking with corrected values
@@ -299,7 +299,6 @@ def main():
                 phase_filter = [initial_phases_unwrapped[-1], angular_speed]
                 
 
-                
                 tracking_iteration = 0
                 max_tracking_iterations = 1500
                 
@@ -547,6 +546,7 @@ def main():
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
                 scan_tilt = current_elevation
                 anomaly_count = 0
+                anomaly_averaged_coords = []
                 current_state = states[1]
                 
             
