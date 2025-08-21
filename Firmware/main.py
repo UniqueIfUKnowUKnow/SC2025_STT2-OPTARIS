@@ -274,29 +274,66 @@ def main():
 
                 numerator = np.sum((first_scan_times - t_mean) * (initial_phases_unwrapped - phase_mean))
                 denominator = np.sum((first_scan_times - t_mean)**2)
-                
+
                 if abs(denominator) < 1e-10:
-                    # print("Warning: Cannot estimate angular rate - using default")
+                    print("Warning: Cannot estimate angular rate - using default")
                     angular_speed = 0.1  # Default angular speed (rad/s)
                 else:
                     angular_speed = numerator / denominator
-                
-                azimuth_trend = np.diff(first_scan_pos[:, 1])  # Difference in azimuth values
-                azimuth_increasing = np.mean(azimuth_trend) > 0
 
-                print(f"DEBUG: Angular speed = {np.degrees(angular_speed):.2f} deg/s")
-                print(f"DEBUG: Azimuth trend = {np.mean(azimuth_trend):.2f} deg/measurement")
+                # Calculate azimuth trend for comparison
+                azimuth_trend = np.diff(first_scan_pos[:, 1])  # Difference in azimuth values
+                mean_azimuth_trend = np.mean(azimuth_trend)
+                azimuth_increasing = mean_azimuth_trend > 0
+
+                print(f"DEBUG: Phase-based angular speed = {np.degrees(angular_speed):.2f} deg/s")
+                print(f"DEBUG: Azimuth trend = {mean_azimuth_trend:.2f} deg/measurement")
                 print(f"DEBUG: Azimuth increasing = {azimuth_increasing}")
 
-                # If azimuth is increasing but angular speed is negative, fix the coordinate system
-                # If azimuth is increasing but angular speed is negative, fix the coordinate system
-
-                
-                print(f"CORRECTED: Angular speed = {np.degrees(angular_speed):.2f} deg/s")
-
-                # Initialize tracking with corrected values
-                t_last = first_scan_times[-1]
-                phase_filter = [initial_phases_unwrapped[-1], angular_speed]
+                # COORDINATE SYSTEM CONSISTENCY CHECK AND CORRECTION
+                # Calculate azimuth-based angular speed for comparison
+                if len(first_scan_times) > 1:
+                    time_diffs = np.diff(first_scan_times)
+                    azimuth_rads = np.radians(first_scan_pos[:, 1])
+                    
+                    # Handle azimuth wrap-around for angular speed calculation
+                    azimuth_diffs = np.diff(azimuth_rads)
+                    for i in range(len(azimuth_diffs)):
+                        if azimuth_diffs[i] > np.pi:
+                            azimuth_diffs[i] -= 2*np.pi
+                        elif azimuth_diffs[i] < -np.pi:
+                            azimuth_diffs[i] += 2*np.pi
+                    
+                    # Calculate angular speeds for each measurement interval
+                    azimuth_angular_speeds = azimuth_diffs / time_diffs
+                    azimuth_based_angular_speed = np.mean(azimuth_angular_speeds)
+                    
+                    print(f"DEBUG: Azimuth-based angular speed = {np.degrees(azimuth_based_angular_speed):.2f} deg/s")
+                    
+                    # Check if phase-based and azimuth-based angular speeds have opposite signs
+                    if np.sign(angular_speed) != np.sign(azimuth_based_angular_speed) and abs(azimuth_based_angular_speed) > 0.01:
+                        print("WARNING: Phase and azimuth coordinate systems have opposite orientations!")
+                        print("Correcting by flipping the phase coordinate system...")
+                        
+                        # Flip the coordinate system by negating the sine basis vector
+                        sin_base = -sin_base
+                        
+                        # Recalculate phases with corrected coordinate system
+                        unit_vectors = angles_to_unit(first_scan_pos_rad[:, 1], first_scan_pos_rad[:, 2])
+                        initial_phases = phase_from_unit(unit_vectors, cos_base, sin_base)
+                        initial_phases_unwrapped = unwrap_phases(initial_phases)
+                        
+                        # Recalculate angular speed with corrected phases
+                        phase_mean = np.mean(initial_phases_unwrapped)
+                        numerator = np.sum((first_scan_times - t_mean) * (initial_phases_unwrapped - phase_mean))
+                        angular_speed = numerator / denominator
+                        
+                        print(f"CORRECTED: Phase-based angular speed = {np.degrees(angular_speed):.2f} deg/s")
+                        
+                        # Update the filter initialization with corrected values
+                        phase_filter = [initial_phases_unwrapped[-1], angular_speed]
+                    else:
+                        phase_filter = [initial_phases_unwrapped[-1], angular_speed]
                 
 
                 tracking_iteration = 0
@@ -305,6 +342,7 @@ def main():
                 # Store tracking history
                 phase_history = list(initial_phases_unwrapped)
                 time_history = list(first_scan_times)
+                t_last = time.time()
                 
                 # print(f"\n=== STARTING PHASE-SPACE TRACKING ===")
                 # print(f"Initial filter state: s = {np.degrees(phase_filter[0]):.1f}°, Ω = {np.degrees(phase_filter[1]):.3f} deg/s")
