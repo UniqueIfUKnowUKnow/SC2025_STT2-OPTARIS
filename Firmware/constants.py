@@ -33,7 +33,7 @@ DEFAULT_CALIBRATION_DISTANCE = 1000  # cm - adjust based on your environment
 SENSOR_MAX = 1000
 ANOMALY_MAX_RADIUS = 4.0 # max degree range in which to average points
 SWEEP_RANGE = 10
-ANOMALY_FACTOR = 0.5
+ANOMALY_FACTOR = 0.7
 TILT_EXPANSION_FACTOR = 0.5
 AZI_EXPANSION_FACTOR = 0.5
 MISS_UNCERTAINTY_GROWTH_RATE = 0.08
@@ -44,8 +44,8 @@ MISS_UNCERTAINTY_GROWTH_RATE = 0.08
 DT = 0.5
 
 # Phase-space filter parameters (tuned for phase dynamics)
-ALPHA_PHASE = 0.7   # Position correction gain
-BETA_PHASE = 0.3  # Velocity correction gain
+ALPHA_PHASE = 0.6   # Position correction gain
+BETA_PHASE = 0.2  # Velocity correction gain
 
 # Test TLE
 satellite_name = "ISS (ZARYA)"

@@ -281,7 +281,10 @@ def main():
                 
                 azimuth_trend = np.diff(first_scan_pos[:, 1])  # Difference in azimuth values
                 azimuth_increasing = np.mean(azimuth_trend) > 0
-
+                if azimuth_increasing and angular_speed < 0:
+                    angular_speed = -angular_speed  # Flip sign to match azimuth direction
+                    sin_base = -sin_base  # Also flip the sine basis for consistency
+                    print(f"COORDINATE SYSTEM CORRECTED")
                 print(f"DEBUG: Angular speed = {np.degrees(angular_speed):.2f} deg/s")
                 print(f"DEBUG: Azimuth trend = {np.mean(azimuth_trend):.2f} deg/measurement")
                 print(f"DEBUG: Azimuth increasing = {azimuth_increasing}")
@@ -296,7 +299,6 @@ def main():
                 t_last = first_scan_times[-1]
                 phase_filter = [initial_phases_unwrapped[-1], angular_speed]
                 
-
                 
                 tracking_iteration = 0
                 max_tracking_iterations = 1500
@@ -367,7 +369,7 @@ def main():
                     
                     # Calculate search area bounds
                     start_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
-                    end_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
+                    end_azimuth = np.degrees(azi_pred) + 0.2 * azimuth_range
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
@@ -396,7 +398,7 @@ def main():
                         
                         # Calculate search area bounds
                         start_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
-                        end_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
+                        end_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
                         start_elevation = np.degrees(tilt_pred) - elevation_range/2
                         end_elevation = np.degrees(tilt_pred) + elevation_range/2
                         
