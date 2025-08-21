@@ -153,7 +153,7 @@ def perform_scanning_sequence(pi, lidar_data_queue, calibration_data, current_az
 def perform_point_to_point_sweep(pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                                 end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
                                 anomaly_averaged_coords, anomaly_count, detections_required, 
-                                num_steps=5, direction="forward"):
+                                num_steps=20, direction="forward"):
     """
     Perform a sweep between any two arbitrary points with smooth motion.
     

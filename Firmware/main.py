@@ -169,14 +169,12 @@ def main():
 
                 # Mapping environment
                 calibration_data = calibrate_environment(pi, lidar_data_queue)
-                print(calibration_data)
-                # save data
-                # save_calibration_data(calibration_data)
+
                 _safe_push({
                     "status": "CALIBRATING",
                     "progress": 100,
                     "live_telemetry": {"statusMessage": "Calibration complete"}
-                })
+                })              
 
                 # Moving to right of ascending node
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
@@ -324,8 +322,8 @@ def main():
                     # PREDICTION STEP (entirely in phase space)
                     current_time = time.time()
                     dt = current_time - t_last
-                    if dt <= 0 or dt < 0.2:  # Minimum 100ms between updates
-                        dt = 0.2
+                    if dt <= 0 or dt < 0.5:  # Minimum 100ms between updates
+                        dt = 0.5
                           # Use reasonable default instead of 0.08
                     
                     # Predict next phase using constant angular velocity model
@@ -362,14 +360,14 @@ def main():
                     
                     # Expand search if target not found at prediction with individual ranges
                     base_search_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))
-                    azimuth_range = base_search_deg*1.5  #  azimuth search
-                    elevation_range = base_search_deg * 1.5  #  elevation search
+                    azimuth_range = base_search_deg * AZI_EXPANSION_FACTOR  #  azimuth search
+                    elevation_range = base_search_deg * TILT_EXPANSION_FACTOR  #  elevation search
                     
                     # print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                     
                     # Calculate search area bounds
-                    start_azimuth = np.degrees(azi_pred) +0.05*azimuth_range 
-                    end_azimuth = np.degrees(azi_pred) +0.05*azimuth_range 
+                    start_azimuth = np.degrees(azi_pred) 
+                    end_azimuth = np.degrees(azi_pred) 
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
@@ -378,7 +376,7 @@ def main():
                             pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                             end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
                             anomaly_averaged_coords, anomaly_count, detections_required)
-                    time.sleep(0.1)
+                    
                     if anomaly_found and anomaly_measured:
                         # Get the most recent detection
                         anomaly_measured = list(anomaly_measured[-1][0])
@@ -386,14 +384,14 @@ def main():
                     if not anomaly_found:
                         # Expand search if target not found at prediction with individual ranges
                         base_search_deg = max(5.0, np.degrees(2.0 * np.sqrt(dt)))
-                        azimuth_range = base_search_deg * 1.5  #  azimuth search
-                        elevation_range = base_search_deg * 2.0  #  elevation search
+                        azimuth_range = base_search_deg * AZI_EXPANSION_FACTOR  #  azimuth search
+                        elevation_range = base_search_deg * TILT_EXPANSION_FACTOR  #  elevation search
                         
                         print(f"Target not found at predicted location. Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}°")
                         
                         # Calculate search area bounds
-                        start_azimuth = np.degrees(azi_pred) +0.05*azimuth_range 
-                        end_azimuth = np.degrees(azi_pred) +0.05*azimuth_range  
+                        start_azimuth = np.degrees(azi_pred) 
+                        end_azimuth = np.degrees(azi_pred)   
                         start_elevation = np.degrees(tilt_pred) - elevation_range/2
                         end_elevation = np.degrees(tilt_pred) + elevation_range/2
                         
