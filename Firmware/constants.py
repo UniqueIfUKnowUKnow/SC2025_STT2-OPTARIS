@@ -34,7 +34,7 @@ SENSOR_MAX = 1000
 ANOMALY_MAX_RADIUS = 3.0 # max degree range in which to average points
 SWEEP_RANGE = 10
 ANOMALY_FACTOR = 0.7
-TILT_EXPANSION_FACTOR = 1.5
+TILT_EXPANSION_FACTOR = 1
 AZI_EXPANSION_FACTOR = 0.5
 MISS_UNCERTAINTY_GROWTH_RATE = 0.08
 
@@ -44,13 +44,13 @@ MISS_UNCERTAINTY_GROWTH_RATE = 0.08
 DT = 0.5
 
 # Phase-space filter parameters (tuned for phase dynamics)
-ALPHA_PHASE = 0.4   # Position correction gain
+ALPHA_PHASE = 0.2   # Position correction gain
 BETA_PHASE = 0.1   # Velocity correction gain
 
 # Test TLE
 satellite_name = "ISS (ZARYA)"
 line1 = "1 25544U 98067A   24225.51782528  .00016717  00000-0  30199-3 0  9992"
-line2 = "2 25544  51.6426  95.0936 0007310  10.0000  60.6990 15.50209251454141"
+line2 = "2 25544  51.6426  95.0936 0007310  -1.0000  60.6990 15.50209251454141"
 
-AZIMUTH_AMOUNT = 10
+AZIMUTH_AMOUNT = -5
 TILT_AMOUNT = 0

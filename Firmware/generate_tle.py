@@ -1,4 +1,4 @@
-def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times, satellite_name="TRACKED_OBJ"):
+def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times):
     """
     Generate a mock TLE from phase tracking data as outlined in section 3.5.13 of the PDF.
     
@@ -8,10 +8,9 @@ def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times,
         n_hat: plane normal vector (angular momentum direction) - numpy array [3]
         phase_filter: [s0, Omega] - current phase and angular velocity [rad, rad/s]
         first_scan_times: array of measurement times (unix timestamps)
-        satellite_name: name for the TLE (max 24 chars)
         
     Returns:
-        tuple: (satellite_name, line1, line2) of TLE
+        tuple: (line1, line2) of TLE without checksums
     """
     import numpy as np
     from datetime import datetime, timezone
@@ -79,11 +78,8 @@ def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times,
     element_set_number = 1
     revolution_number = 1
     
-    # Truncate satellite name to fit TLE format
-    sat_name = satellite_name[:24].ljust(24)
-    
     # Format TLE Line 1 (columns as per TLE specification)
-    line1_data = (
+    line1 = (
         f"1 {satellite_number:5d}{classification} "
         f"{intl_designator:8s} "
         f"{year_2digit:02d}{epoch_day:012.8f} "
@@ -94,16 +90,11 @@ def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times,
         f"{element_set_number:4d}"
     )
     
-    # Calculate checksum for line 1 (must be exactly 68 chars before checksum)
-    line1_68 = line1_data[:68]
-    checksum1 = calculate_tle_checksum(line1_68)
-    line1 = line1_68 + str(checksum1)
-    
     # Format TLE Line 2 (columns as per TLE specification)
     # Convert eccentricity to integer format (multiply by 10^7, no decimal point)
     ecc_int = int(eccentricity * 10000000)
     
-    line2_data = (
+    line2 = (
         f"2 {satellite_number:5d} "
         f"{inclination_deg:8.4f} "
         f"{raan_deg:8.4f} "
@@ -114,62 +105,11 @@ def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times,
         f"{revolution_number:5d}"
     )
     
-    # Calculate checksum for line 2 (must be exactly 68 chars before checksum)
-    line2_68 = line2_data[:68]
-    checksum2 = calculate_tle_checksum(line2_68)
-    line2 = line2_68 + str(checksum2)
-    
     print(f"Generated mock TLE:")
-    print(f"Name: {sat_name.strip()}")
     print(f"Inclination: {inclination_deg:.4f}°")
     print(f"RAAN: {raan_deg:.4f}°") 
     print(f"Mean Motion: {mean_motion_rev_per_day:.8f} rev/day")
     print(f"Mean Anomaly: {mean_anomaly_deg:.4f}°")
     print(f"Epoch: {epoch_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC")
     
-    return sat_name.strip(), line1, line2
-
-
-def calculate_tle_checksum(line):
-    """
-    Calculate TLE checksum according to standard algorithm.
-    Sum of all digits plus 1 for each '-' character, modulo 10.
-    """
-    total = 0
-    for char in line[:68]:  # Only first 68 characters count toward checksum
-        if char.isdigit():
-            total += int(char)
-        elif char == '-':
-            total += 1
-    return total % 10
-
-
-def format_tle_scientific_notation(value, width=8):
-    """
-    Format a number in TLE's implied scientific notation format.
-    E.g., 0.30199e-3 becomes " 30199-3"
-    """
-    if value == 0.0:
-        return " 00000-0"
-    
-    # Convert to scientific notation
-    exp = int(np.floor(np.log10(abs(value))))
-    mantissa = value / (10.0 ** exp)
-    
-    # Format mantissa (remove decimal point and leading zero)
-    if mantissa < 0:
-        sign = "-"
-        mantissa = abs(mantissa)
-    else:
-        sign = " "
-    
-    # Convert mantissa to integer representation
-    mantissa_str = f"{mantissa:.5f}"[2:7]  # Take 5 digits after decimal
-    
-    # Format exponent with sign
-    if exp < 0:
-        exp_str = f"{sign}{mantissa_str}{abs(exp)}"
-    else:
-        exp_str = f"{sign}{mantissa_str}+{exp}"
-    
-    return exp_str.rjust(width)
+    return line1, line2

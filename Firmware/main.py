@@ -222,7 +222,7 @@ def main():
                     anomaly_averaged_coords.append(anomaly)
                     anomaly_count += 1
                     # Move motors along trajectory
-                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+10, scan_tilt , stepper_steps)
+                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+AZIMUTH_AMOUNT, scan_tilt , stepper_steps)
 
                     # Clear LiDAR queue before starting
                     while not lidar_data_queue.empty():
@@ -310,7 +310,7 @@ def main():
                 # print(f"\n=== STARTING PHASE-SPACE TRACKING ===")
                 # print(f"Initial filter state: s = {np.degrees(phase_filter[0]):.1f}°, Ω = {np.degrees(phase_filter[1]):.3f} deg/s")
                 
-                while tracking_iteration < max_tracking_iterations and current_azimuth < 210:
+                while tracking_iteration < max_tracking_iterations and current_azimuth > 180:
                     tracking_iteration += 1
                     # print(f"\n=== TRACKING ITERATION {tracking_iteration} ===")
                     
@@ -377,8 +377,7 @@ def main():
                     current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
                             pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                             end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
-                            anomaly_averaged_coords, anomaly_count, detections_required, 
-                            num_steps=10, direction="forward")
+                            anomaly_averaged_coords, anomaly_count, detections_required)
                     if anomaly_found and anomaly_measured:
                         # Get the most recent detection
                         anomaly_measured = list(anomaly_measured[-1][0])
@@ -400,8 +399,7 @@ def main():
                         current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_count, anomaly_found, start_azimuth, end_azimuth, start_elevation, end_elevation = perform_point_to_point_sweep(
                             pi, lidar_data_queue, calibration_data, start_azimuth, start_elevation,
                             end_azimuth, end_elevation, stepper_steps, anomaly_locations, 
-                            anomaly_averaged_coords, anomaly_count, detections_required, 
-                            num_steps=10, direction="forward")
+                            anomaly_averaged_coords, anomaly_count, detections_required)
                         if anomaly_found and anomaly_measured:
                             # Get the most recent detection
                             anomaly_measured = list(anomaly_measured[-1][0])
@@ -517,13 +515,12 @@ def main():
                 if len(phase_history) > 5 and cos_base is not None and sin_base is not None and n_hat is not None:
                     try:
                         # Generate the mock TLE
-                        sat_name, mock_line1, mock_line2 = generate_mock_tle(
+                        mock_line1, mock_line2 = generate_mock_tle(
                             cos_base=cos_base,
                             sin_base=sin_base, 
                             n_hat=n_hat,
                             phase_filter=phase_filter,
-                            first_scan_times=first_scan_times,
-                            satellite_name="TRACKED_DRONE"
+                            first_scan_times=first_scan_times
                         )
                         
                         # Save mock TLE to file
@@ -531,7 +528,6 @@ def main():
                         tle_filename = f"mock_tle_{timestamp}.txt"
                         
                         with open(tle_filename, 'w') as f:
-                            f.write(f"{sat_name}\n")
                             f.write(f"{mock_line1}\n") 
                             f.write(f"{mock_line2}\n")
                         
@@ -540,7 +536,6 @@ def main():
                         # Push to UI if available
                         _safe_push({
                             "mock_tle": {
-                                "name": sat_name,
                                 "line1": mock_line1,
                                 "line2": mock_line2,
                                 "filename": tle_filename
