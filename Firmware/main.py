@@ -218,12 +218,12 @@ def main():
                 if anomaly_found == True:
                     
                     anomaly_averaged_coords.append(anomaly)
-                    plot_data.append(anomaly)
+                    
 
                     anomaly_count += 1
                     # Move motors along trajectory
                     current_azimuth += AZIMUTH_AMOUNT
-                    scan_tilt += np.sin(current_azimuth)*tle_data["inclination_deg"]
+                    scan_tilt += np.sin(current_azimuth)*(tle_data["inclination_deg"]-10)
                     current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth, scan_tilt , stepper_steps)
 
                     # Clear LiDAR queue before starting
@@ -245,6 +245,7 @@ def main():
                 miss_counter = 0
                 anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
+                plot_data.append(coords_array)
                 first_scan_pos = coords_array[:, :3]
                 first_scan_times = coords_array[:, 3:].flatten()
                 
@@ -300,7 +301,7 @@ def main():
                 
                 # *** NEW: Anti-stuck mechanism variables ***
                 consecutive_misses = 0
-                MISS_THRESHOLD = 5  # Force progression after 5 consecutive misses
+                MISS_THRESHOLD = 15  # Force progression after 5 consecutive misses
                 FORCED_ADVANCE_RATE = np.radians(10)  # 10 deg/s minimum advance rate
                 MIN_ANGULAR_VELOCITY = np.radians(5)  # 5 deg/s minimum velocity floor
                 
@@ -579,8 +580,8 @@ def main():
                 reset_stepper_pos(stepper_steps)
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
                 scan_tilt = current_elevation
-                anomaly_count = 0
-                current_state = states[1]
+                anomaly_count = 0   
+                break
                 
             
                 
