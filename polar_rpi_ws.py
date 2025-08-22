@@ -48,7 +48,7 @@ MODE = os.getenv("MODE", "moving").strip().lower()  # moving | random
 MIN_RANGE_M = float(os.getenv("MIN_RANGE_M", "0.5"))
 MAX_RANGE_M = float(os.getenv("MAX_RANGE_M", "12.0"))
 
-DATA_FILE = os.getenv("DATA_FILE")
+DATA_FILE = os.getenv("polar_coords.csv")
 LOOP = os.getenv("LOOP", "1") in ("1", "true", "True", "yes", "YES")
 
 
