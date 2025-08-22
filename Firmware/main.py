@@ -370,7 +370,7 @@ def main():
                     
                     # Calculate search area bounds
                     start_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
-                    end_azimuth = np.degrees(azi_pred) + 0.25 * azimuth_range
+                    end_azimuth = np.degrees(azi_pred) + 0.1 * azimuth_range
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
@@ -400,7 +400,7 @@ def main():
                             
                             # Calculate search area bounds
                             start_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
-                            end_azimuth = np.degrees(azi_pred) + 0.25 * azimuth_range
+                            end_azimuth = np.degrees(azi_pred) + 0.1 * azimuth_range
                             start_elevation = np.degrees(tilt_pred) - elevation_range/2
                             end_elevation = np.degrees(tilt_pred) + elevation_range/2
                             
