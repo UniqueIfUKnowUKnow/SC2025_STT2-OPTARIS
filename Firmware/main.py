@@ -177,7 +177,7 @@ def main():
                 })              
 
                 # Moving to right of ascending node
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, 1, 10 , stepper_steps)
                 scan_tilt = current_elevation
 
                 calibration_done = True
@@ -309,7 +309,7 @@ def main():
                 print(f"\n=== STARTING PHASE-SPACE TRACKING ===")
                 print(f"Initial filter state: s = {np.degrees(phase_filter[0]):.1f}°, Ω = {np.degrees(phase_filter[1]):.3f} deg/s")
                 
-                while tracking_iteration < max_tracking_iterations and current_azimuth < 180:
+                while tracking_iteration < max_tracking_iterations and current_azimuth < 170:
 
                     LOOP_PERIOD = 0.1  # 10 Hz
                     loop_start = time.time()
@@ -367,14 +367,14 @@ def main():
                     elevation_range = base_search_deg * TILT_EXPANSION_FACTOR * miss_multiplier
                     
                     # Calculate search area bounds
-                    start_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
-                    end_azimuth = np.degrees(azi_pred) + 0.2 * azimuth_range
+                    start_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
+                    end_azimuth = np.degrees(azi_pred) + 0.25 * azimuth_range
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
                     # MEASUREMENT STEP - scan at predicted location
                     current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_found = perform_continuous_servo_scan(
-                            pi, lidar_data_queue, calibration_data, 
+                            pi, lidar_data_queue, calibration_data,     
                             end_azimuth, current_elevation, stepper_steps,
                             end_elevation, start_elevation, 1 , 900)
                     
@@ -397,8 +397,8 @@ def main():
                             print(f"Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}° (multiplier: {miss_multiplier:.1f}x)")
                             
                             # Calculate search area bounds
-                            start_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
-                            end_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
+                            start_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
+                            end_azimuth = np.degrees(azi_pred) + 0.25 * azimuth_range
                             start_elevation = np.degrees(tilt_pred) - elevation_range/2
                             end_elevation = np.degrees(tilt_pred) + elevation_range/2
                             
