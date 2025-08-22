@@ -106,9 +106,9 @@ async def client_handler(ws):
         # Send the current TLE immediately to the connecting client only
         try:
             if TLE_INIT1 and TLE_INIT2:
-                await ws.send(_build_msg(TLE_INIT1, TLE_INIT2, "DroneInitial", "Drone (Initial)")) 
+                await ws.send(_build_msg(TLE_INIT1, TLE_INIT2, "DroneInitial", "Satellite (Initial)")) 
             if TLE_DRONE1 and TLE_DRONE2:
-                await ws.send(_build_msg(TLE_DRONE1, TLE_DRONE2, "Drone", "Drone"))
+                await ws.send(_build_msg(TLE_DRONE1, TLE_DRONE2, "Drone", "Satellite"))
             print(f"[WS] Sent current TLEs to new client ({len(CLIENTS)} total)")
         except Exception:
             pass
@@ -150,8 +150,8 @@ async def main():
     async with server:
         # Start watcher task in background
         print(f"[WS] TLE server on ws://{HOST}:{PORT} watching initial={INITIAL_TLE_PATH}, current={TLE_PATH}")
-        watcher_initial = asyncio.create_task(tle_file_watcher(INITIAL_TLE_PATH, "DroneInitial", "Drone (Initial)", poll_sec=0.5))
-        watcher_current = asyncio.create_task(tle_file_watcher(TLE_PATH, "Drone", "Drone", poll_sec=0.5))
+        watcher_initial = asyncio.create_task(tle_file_watcher(INITIAL_TLE_PATH, "DroneInitial", "Satellite (Initial)", poll_sec=0.5))
+        watcher_current = asyncio.create_task(tle_file_watcher(TLE_PATH, "Drone", "Satellite", poll_sec=0.5))
         try:
             await asyncio.Future()  # run forever
         finally:

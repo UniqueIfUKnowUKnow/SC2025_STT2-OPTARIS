@@ -135,55 +135,192 @@ const SatelliteMarker = ({ position, color, size = 0.8 }) => {
   );
 };
 
-// Complete orbit path component
+// // Complete orbit path component
+// const OrbitPath = ({ satelliteRec, currentTime }) => {
+//   const orbitPoints = useMemo(() => {
+//     if (!satelliteRec || !currentTime) return [];
+//
+//     const points = [];
+//     const meanMotionRadPerMin = satelliteRec?.no; // radians per minute
+//     const orbitPeriod = (typeof meanMotionRadPerMin === 'number' && meanMotionRadPerMin > 0)
+//       ? (2 * Math.PI) / meanMotionRadPerMin
+//       : 93; // fallback in minutes
+//     const numPoints = Math.min(1000, Math.max(200, Math.floor(orbitPeriod * 3)));
+//
+//     // Generate orbit path for one complete orbit
+//     for (let i = 0; i < numPoints; i++) {
+//       const timeOffsetMs = (i / numPoints) * orbitPeriod * 60 * 1000; // minutes -> ms
+//       const futureTime = new Date(
+//         currentTime.getTime() - (orbitPeriod * 0.5 * 60 * 1000) + timeOffsetMs
+//       ); // start half an orbit in the past
+//
+//       try {
+//         const positionAndVelocity = satellite.propagate(satelliteRec, futureTime);
+//         if (positionAndVelocity.position && !positionAndVelocity.position.error) {
+//            const cartesianPos = convertEciToCartesian(positionAndVelocity.position);
+//           points.push(new THREE.Vector3(cartesianPos[0], cartesianPos[1], cartesianPos[2]));
+//         }
+//       } catch (error) {
+//         console.warn('Error generating orbit point:', error);
+//       }
+//     }
+//
+//     return points;
+//   }, [satelliteRec, Math.floor(currentTime?.getTime() / 60000)]); // Update every minute
+//
+//   if (orbitPoints.length < 2) return null;
+//
+//   return (
+//     <line>
+//       <bufferGeometry>
+//         <bufferAttribute
+//           attach="attributes-position"
+//           count={orbitPoints.length}
+//           array={new Float32Array(orbitPoints.flatMap(p => [p.x, p.y, p.z]))}
+//           itemSize={3}
+//         />
+//       </bufferGeometry>
+//       <lineBasicMaterial color="#00ff88" opacity={0.9} transparent linewidth={3} />
+//     </line>
+//   );
+// };
+
+
+// Replace the OrbitPath component (around line 140-180):
 const OrbitPath = ({ satelliteRec, currentTime }) => {
   const orbitPoints = useMemo(() => {
     if (!satelliteRec || !currentTime) return [];
-    
+
     const points = [];
     const meanMotionRadPerMin = satelliteRec?.no; // radians per minute
     const orbitPeriod = (typeof meanMotionRadPerMin === 'number' && meanMotionRadPerMin > 0)
-      ? (2 * Math.PI) / meanMotionRadPerMin
-      : 93; // fallback in minutes
+        ? (2 * Math.PI) / meanMotionRadPerMin
+        : 93; // fallback in minutes
     const numPoints = Math.min(1000, Math.max(200, Math.floor(orbitPeriod * 3)));
-    
+
     // Generate orbit path for one complete orbit
     for (let i = 0; i < numPoints; i++) {
       const timeOffsetMs = (i / numPoints) * orbitPeriod * 60 * 1000; // minutes -> ms
       const futureTime = new Date(
-        currentTime.getTime() - (orbitPeriod * 0.5 * 60 * 1000) + timeOffsetMs
+          currentTime.getTime() - (orbitPeriod * 0.5 * 60 * 1000) + timeOffsetMs
       ); // start half an orbit in the past
-      
+
       try {
         const positionAndVelocity = satellite.propagate(satelliteRec, futureTime);
         if (positionAndVelocity.position && !positionAndVelocity.position.error) {
-           const cartesianPos = convertEciToCartesian(positionAndVelocity.position);
+          const cartesianPos = convertEciToCartesian(positionAndVelocity.position);
           points.push(new THREE.Vector3(cartesianPos[0], cartesianPos[1], cartesianPos[2]));
         }
       } catch (error) {
         console.warn('Error generating orbit point:', error);
       }
     }
-    
+
     return points;
   }, [satelliteRec, Math.floor(currentTime?.getTime() / 60000)]); // Update every minute
 
-  if (orbitPoints.length < 2) return null;
-  
+  const tubeGeometry = useMemo(() => {
+    if (orbitPoints.length < 2) return null;
+
+    try {
+      // Create a curve from the orbit points
+      const curve = new THREE.CatmullRomCurve3(orbitPoints, true); // true for closed loop
+      // Create tube geometry with radius and tubular segments
+      return new THREE.TubeGeometry(curve, orbitPoints.length, 0.02, 8, true);
+    } catch (error) {
+      console.warn('Error creating tube geometry:', error);
+      return null;
+    }
+  }, [orbitPoints]);
+
+  if (!tubeGeometry) return null;
+
   return (
-    <line>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          count={orbitPoints.length}
-          array={new Float32Array(orbitPoints.flatMap(p => [p.x, p.y, p.z]))}
-          itemSize={3}
+      <mesh>
+        <primitive object={tubeGeometry} />
+        <meshStandardMaterial
+            color="#00ff88"
+            opacity={0.9}
+            transparent
+            emissive="#00ff88"
+            emissiveIntensity={0.2}
         />
-      </bufferGeometry>
-      <lineBasicMaterial color="#00ff88" opacity={0.9} transparent linewidth={3} />
-    </line>
+      </mesh>
   );
 };
+
+// Replace the MultiSatelliteOrbits component (around line 220-290):
+const MultiSatelliteOrbits = ({ satellites, currentTime }) => {
+  const orbitPaths = useMemo(() => {
+    if (!satellites || !currentTime) return [];
+
+    const paths = [];
+    Object.entries(satellites).forEach(([id, sat]) => {
+      if (!sat.rec) return;
+
+      const points = [];
+      const meanMotionRadPerMin = sat.rec?.no; // radians per minute
+      const orbitPeriod = (typeof meanMotionRadPerMin === 'number' && meanMotionRadPerMin > 0)
+          ? (2 * Math.PI) / meanMotionRadPerMin
+          : 90; // fallback in minutes
+      const numPoints = Math.min(1000, Math.max(200, Math.floor(orbitPeriod * 3)));
+
+      for (let i = 0; i < numPoints; i++) {
+        const timeOffsetMs = (i / numPoints) * orbitPeriod * 60 * 1000;
+        const futureTime = new Date(
+            currentTime.getTime() - (orbitPeriod * 0.5 * 60 * 1000) + timeOffsetMs
+        );
+
+        try {
+          const positionAndVelocity = satellite.propagate(sat.rec, futureTime);
+          if (positionAndVelocity.position && !positionAndVelocity.position.error) {
+            const cartesianPos = convertEciToCartesian(positionAndVelocity.position);
+            points.push(new THREE.Vector3(cartesianPos[0], cartesianPos[1], cartesianPos[2]));
+          }
+        } catch (error) {
+          console.warn(`Error generating orbit for ${id}:`, error);
+        }
+      }
+
+      if (points.length > 1) {
+        try {
+          // Create tube geometry for each orbit
+          const curve = new THREE.CatmullRomCurve3(points, true); // true for closed loop
+          const tubeGeometry = new THREE.TubeGeometry(curve, points.length, 0.04, 6, true);
+
+          // Include version in key so React remounts mesh when TLE changes
+          paths.push({
+            id: `${id}-v${sat.version ?? 0}`,
+            geometry: tubeGeometry,
+            color: sat.color
+          });
+        } catch (error) {
+          console.warn(`Error creating tube geometry for ${id}:`, error);
+        }
+      }
+    });
+
+    return paths;
+  }, [satellites, Math.floor(currentTime?.getTime() / 60000)]);
+
+  return (
+      <>
+        {orbitPaths.map(({ id, geometry, color }) => (
+            <mesh key={id}>
+              <primitive object={geometry} />
+              <meshStandardMaterial
+                  color={color}
+                  opacity={1}
+                  transparent
+                  emissive={color}
+                  emissiveIntensity={0.6}
+              />
+            </mesh>
+        ))}
+      </>
+  );
+};
+
 
 // Measured path component with lines from Earth surface
 const MeasuredPath = ({ positions }) => {
@@ -285,65 +422,65 @@ const LabeledHexagonMarker = ({ position, name, color, size = 0.15 }) => {
 };
 
 // Multi-satellite orbit paths component
-const MultiSatelliteOrbits = ({ satellites, currentTime }) => {
-  const orbitPaths = useMemo(() => {
-    if (!satellites || !currentTime) return [];
-    
-    const paths = [];
-    Object.entries(satellites).forEach(([id, sat]) => {
-      if (!sat.rec) return;
-      
-      const points = [];
-      const meanMotionRadPerMin = sat.rec?.no; // radians per minute
-      const orbitPeriod = (typeof meanMotionRadPerMin === 'number' && meanMotionRadPerMin > 0)
-        ? (2 * Math.PI) / meanMotionRadPerMin
-        : 90; // fallback in minutes
-      const numPoints = Math.min(1000, Math.max(200, Math.floor(orbitPeriod * 3)));
-      
-      for (let i = 0; i < numPoints; i++) {
-        const timeOffsetMs = (i / numPoints) * orbitPeriod * 60 * 1000;
-        const futureTime = new Date(
-          currentTime.getTime() - (orbitPeriod * 0.5 * 60 * 1000) + timeOffsetMs
-        );
-        
-        try {
-          const positionAndVelocity = satellite.propagate(sat.rec, futureTime);
-          if (positionAndVelocity.position && !positionAndVelocity.position.error) {
-            const cartesianPos = convertEciToCartesian(positionAndVelocity.position);
-            points.push(new THREE.Vector3(cartesianPos[0], cartesianPos[1], cartesianPos[2]));
-          }
-        } catch (error) {
-          console.warn(`Error generating orbit for ${id}:`, error);
-        }
-      }
-      
-      if (points.length > 1) {
-        // Include version in key so React remounts line when TLE changes
-        paths.push({ id: `${id}-v${sat.version ?? 0}`, points, color: sat.color });
-      }
-    });
-    
-    return paths;
-  }, [satellites, Math.floor(currentTime?.getTime() / 60000)]);
-  
-  return (
-    <>
-      {orbitPaths.map(({ id, points, color }) => (
-        <line key={id}>
-          <bufferGeometry>
-            <bufferAttribute
-              attach="attributes-position"
-              count={points.length}
-              array={new Float32Array(points.flatMap(p => [p.x, p.y, p.z]))}
-              itemSize={3}
-            />
-          </bufferGeometry>
-          <lineBasicMaterial color={color} opacity={0.6} transparent linewidth={1} />
-        </line>
-      ))}
-    </>
-  );
-};
+// const MultiSatelliteOrbits = ({ satellites, currentTime }) => {
+//   const orbitPaths = useMemo(() => {
+//     if (!satellites || !currentTime) return [];
+//
+//     const paths = [];
+//     Object.entries(satellites).forEach(([id, sat]) => {
+//       if (!sat.rec) return;
+//
+//       const points = [];
+//       const meanMotionRadPerMin = sat.rec?.no; // radians per minute
+//       const orbitPeriod = (typeof meanMotionRadPerMin === 'number' && meanMotionRadPerMin > 0)
+//         ? (2 * Math.PI) / meanMotionRadPerMin
+//         : 90; // fallback in minutes
+//       const numPoints = Math.min(1000, Math.max(200, Math.floor(orbitPeriod * 3)));
+//
+//       for (let i = 0; i < numPoints; i++) {
+//         const timeOffsetMs = (i / numPoints) * orbitPeriod * 60 * 1000;
+//         const futureTime = new Date(
+//           currentTime.getTime() - (orbitPeriod * 0.5 * 60 * 1000) + timeOffsetMs
+//         );
+//
+//         try {
+//           const positionAndVelocity = satellite.propagate(sat.rec, futureTime);
+//           if (positionAndVelocity.position && !positionAndVelocity.position.error) {
+//             const cartesianPos = convertEciToCartesian(positionAndVelocity.position);
+//             points.push(new THREE.Vector3(cartesianPos[0], cartesianPos[1], cartesianPos[2]));
+//           }
+//         } catch (error) {
+//           console.warn(`Error generating orbit for ${id}:`, error);
+//         }
+//       }
+//
+//       if (points.length > 1) {
+//         // Include version in key so React remounts line when TLE changes
+//         paths.push({ id: `${id}-v${sat.version ?? 0}`, points, color: sat.color });
+//       }
+//     });
+//
+//     return paths;
+//   }, [satellites, Math.floor(currentTime?.getTime() / 60000)]);
+//
+//   return (
+//     <>
+//       {orbitPaths.map(({ id, points, color }) => (
+//         <line key={id}>
+//           <bufferGeometry>
+//             <bufferAttribute
+//               attach="attributes-position"
+//               count={points.length}
+//               array={new Float32Array(points.flatMap(p => [p.x, p.y, p.z]))}
+//               itemSize={3}
+//             />
+//           </bufferGeometry>
+//           <lineBasicMaterial color={color} opacity={0.6} transparent linewidth={1} />
+//         </line>
+//       ))}
+//     </>
+//   );
+// };
 
 // 3D Scene component
 const Scene3D = ({ 
