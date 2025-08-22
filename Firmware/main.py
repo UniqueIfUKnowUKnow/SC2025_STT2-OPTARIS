@@ -218,11 +218,13 @@ def main():
                 if anomaly_found == True:
                     
                     anomaly_averaged_coords.append(anomaly)
+                    plot_data.append(anomaly)
+
                     anomaly_count += 1
                     # Move motors along trajectory
                     current_azimuth += AZIMUTH_AMOUNT
                     scan_tilt += np.sin(current_azimuth)*tle_data["inclination_deg"]
-                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+AZIMUTH_AMOUNT, scan_tilt , stepper_steps)
+                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth, scan_tilt , stepper_steps)
 
                     # Clear LiDAR queue before starting
                     while not lidar_data_queue.empty():
@@ -504,7 +506,8 @@ def main():
                         print(f"  Rate updated: {np.degrees(phase_rate_updated):.3f} deg/s")
                         
                         # Store tracking data for later analysis
-                        plot_data.append([anomaly_measured[0], anomaly_measured[1], anomaly_measured[2]])
+                        plot_data.append([anomaly_measured[0], anomaly_measured[1], anomaly_measured[2], anomaly_measured[3]])
+
                         
                         # Optional: Check for convergence or orbit completion
                         if len(phase_history) > 10:
@@ -527,19 +530,18 @@ def main():
                 #     save_calibration_data(plot_data)
                 
                 # Optional: Save phase history for analysis
-                if len(phase_history) > 1:
-                    phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
+                if len(plot_data) > 1:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    phase_filename = f"phase_tracking_{timestamp}.csv"
+                    tracking_filename = f"../polar_coords.csv"
                     try:
-                        with open(phase_filename, 'w', newline='') as csvfile:
+                        with open(tracking_filename, 'w', newline='') as csvfile:
                             writer = csv.writer(csvfile)
-                            writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
-                            for row in phase_data:
-                                writer.writerow(row)
-                        print(f"✓ Phase tracking data saved to: {phase_filename}")
+                            writer.writerow(['Distance_cm', 'Azimuth_deg', 'Elevation_deg', 'Time_s'])
+                            for row in plot_data:
+                                writer.writerow([f"{row[0]:.1f}", f"{row[1]:.2f}", f"{row[2]:.2f}", f"{row[3]:.3f}"])
+                        print(f"✓ Tracking data saved to: {tracking_filename}")
                     except Exception as e:
-                        print(f"✗ Error saving phase data: {e}")
+                        print(f"✗ Error saving tracking data: {e}")
                 
                 if len(phase_history) > 5 and cos_base is not None and sin_base is not None and n_hat is not None:
                     try:
@@ -554,7 +556,7 @@ def main():
                         
                         # Save mock TLE to file
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        tle_filename = f"mock_tle_{timestamp}.txt"
+                        tle_filename = f"../drone.tle"
                         
                         with open(tle_filename, 'w') as f:
                             f.write(f"{mock_line1}\n") 
