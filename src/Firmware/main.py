@@ -177,7 +177,7 @@ def main():
                 })              
 
                 # Moving to right of ascending node
-                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
+                current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, 1, 10 , stepper_steps)
                 scan_tilt = current_elevation
 
                 calibration_done = True
@@ -218,11 +218,13 @@ def main():
                 if anomaly_found == True:
                     
                     anomaly_averaged_coords.append(anomaly)
+                    
+
                     anomaly_count += 1
                     # Move motors along trajectory
                     current_azimuth += AZIMUTH_AMOUNT
-                    scan_tilt += np.sin(current_azimuth)*tle_data["inclination_deg"]
-                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth+AZIMUTH_AMOUNT, scan_tilt , stepper_steps)
+                    scan_tilt += np.sin(current_azimuth)*(tle_data["inclination_deg"]-10)
+                    current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, current_azimuth, scan_tilt , stepper_steps)
 
                     # Clear LiDAR queue before starting
                     while not lidar_data_queue.empty():
@@ -243,6 +245,8 @@ def main():
                 miss_counter = 0
                 anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
+                for coord in coords_array:
+                    plot_data.append(coord.tolist())
                 first_scan_pos = coords_array[:, :3]
                 first_scan_times = coords_array[:, 3:].flatten()
                 
@@ -298,7 +302,7 @@ def main():
                 
                 # *** NEW: Anti-stuck mechanism variables ***
                 consecutive_misses = 0
-                MISS_THRESHOLD = 5  # Force progression after 5 consecutive misses
+                MISS_THRESHOLD = 15  # Force progression after 5 consecutive misses
                 FORCED_ADVANCE_RATE = np.radians(10)  # 10 deg/s minimum advance rate
                 MIN_ANGULAR_VELOCITY = np.radians(5)  # 5 deg/s minimum velocity floor
                 
@@ -309,7 +313,7 @@ def main():
                 print(f"\n=== STARTING PHASE-SPACE TRACKING ===")
                 print(f"Initial filter state: s = {np.degrees(phase_filter[0]):.1f}°, Ω = {np.degrees(phase_filter[1]):.3f} deg/s")
                 
-                while tracking_iteration < max_tracking_iterations and current_azimuth < 180:
+                while tracking_iteration < max_tracking_iterations and current_azimuth < 170:
 
                     LOOP_PERIOD = 0.1  # 10 Hz
                     loop_start = time.time()
@@ -367,14 +371,14 @@ def main():
                     elevation_range = base_search_deg * TILT_EXPANSION_FACTOR * miss_multiplier
                     
                     # Calculate search area bounds
-                    start_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
-                    end_azimuth = np.degrees(azi_pred) + 0.2 * azimuth_range
+                    start_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
+                    end_azimuth = np.degrees(azi_pred) + 0.15 * azimuth_range
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
                     # MEASUREMENT STEP - scan at predicted location
                     current_azimuth, current_elevation, stepper_steps, anomaly_measured, anomaly_found = perform_continuous_servo_scan(
-                            pi, lidar_data_queue, calibration_data, 
+                            pi, lidar_data_queue, calibration_data,     
                             end_azimuth, current_elevation, stepper_steps,
                             end_elevation, start_elevation, 1 , 900)
                     
@@ -397,8 +401,8 @@ def main():
                             print(f"Expanding search: Az±{azimuth_range/2:.1f}°, El±{elevation_range/2:.1f}° (multiplier: {miss_multiplier:.1f}x)")
                             
                             # Calculate search area bounds
-                            start_azimuth = np.degrees(azi_pred) + 0.1* azimuth_range
-                            end_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
+                            start_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
+                            end_azimuth = np.degrees(azi_pred) + 0.15 * azimuth_range
                             start_elevation = np.degrees(tilt_pred) - elevation_range/2
                             end_elevation = np.degrees(tilt_pred) + elevation_range/2
                             
@@ -427,6 +431,7 @@ def main():
                                 az_deg = float(anomaly_measured[1]) 
                                 el_deg = float(anomaly_measured[2])
                                 raw_ts = float(anomaly_measured[3]) if len(anomaly_measured) > 3 else time.time()
+                                plot_data.append([distance_m, az_deg, el_deg, raw_ts])
                             else:
                                 print(f"Warning: Invalid anomaly_measured format: {anomaly_measured}")
                                 continue
@@ -503,9 +508,6 @@ def main():
                         print(f"  Phase updated: {np.degrees(phase_updated):.1f}°")
                         print(f"  Rate updated: {np.degrees(phase_rate_updated):.3f} deg/s")
                         
-                        # Store tracking data for later analysis
-                        plot_data.append([anomaly_measured[0], anomaly_measured[1], anomaly_measured[2]])
-                        
                         # Optional: Check for convergence or orbit completion
                         if len(phase_history) > 10:
                             phase_span = phase_history[-1] - phase_history[0]
@@ -527,19 +529,18 @@ def main():
                 #     save_calibration_data(plot_data)
                 
                 # Optional: Save phase history for analysis
-                if len(phase_history) > 1:
-                    phase_data = [[np.degrees(p), t, 0] for p, t in zip(phase_history, time_history)]
+                if len(plot_data) > 1:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    phase_filename = f"phase_tracking_{timestamp}.csv"
+                    tracking_filename = f"../polar_coords.csv"
                     try:
-                        with open(phase_filename, 'w', newline='') as csvfile:
+                        with open(tracking_filename, 'w', newline='') as csvfile:
                             writer = csv.writer(csvfile)
-                            writer.writerow(['Phase_deg', 'Time_s', 'Placeholder'])
-                            for row in phase_data:
-                                writer.writerow(row)
-                        print(f"✓ Phase tracking data saved to: {phase_filename}")
+                            writer.writerow(['Distance_cm', 'Azimuth_deg', 'Elevation_deg', 'Time_s'])
+                            for row in plot_data:
+                                writer.writerow([f"{row[0]:.1f}", f"{row[1]:.2f}", f"{row[2]:.2f}", f"{row[3]:.3f}"])
+                        print(f"✓ Tracking data saved to: {tracking_filename}")
                     except Exception as e:
-                        print(f"✗ Error saving phase data: {e}")
+                        print(f"✗ Error saving tracking data: {e}")
                 
                 if len(phase_history) > 5 and cos_base is not None and sin_base is not None and n_hat is not None:
                     try:
@@ -554,7 +555,7 @@ def main():
                         
                         # Save mock TLE to file
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        tle_filename = f"mock_tle_{timestamp}.txt"
+                        tle_filename = f"../drone.tle"
                         
                         with open(tle_filename, 'w') as f:
                             f.write(f"{mock_line1}\n") 
@@ -574,11 +575,11 @@ def main():
                     except Exception as e:
                         print(f"✗ Error generating mock TLE: {e}")
                 print(current_azimuth,tracking_iteration)
-                reset_stepper_pos(stepper_steps)
+                # reset_stepper_pos(stepper_steps)
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
                 scan_tilt = current_elevation
-                anomaly_count = 0
-                current_state = states[1]
+                anomaly_count = 0   
+                break
                 
             
                 

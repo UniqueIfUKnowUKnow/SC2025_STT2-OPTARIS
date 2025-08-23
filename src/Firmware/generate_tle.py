@@ -1,6 +1,7 @@
-def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times):
+def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times, original_tle_data=None):
     """
-    Generate a mock TLE from phase tracking data as outlined in section 3.5.13 of the PDF.
+    Generate a mock TLE from phase tracking data, preserving all original TLE information
+    except for the inclination angle which is calculated from tracking data.
     
     Args:
         cos_base: C vector (cosine basis in orbital plane) - numpy array [3]
@@ -8,95 +9,123 @@ def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times)
         n_hat: plane normal vector (angular momentum direction) - numpy array [3]
         phase_filter: [s0, Omega] - current phase and angular velocity [rad, rad/s]
         first_scan_times: array of measurement times (unix timestamps)
+        original_tle_data: parsed TLE data from tle_processing.parse_tle() (optional)
         
     Returns:
-        tuple: (line1, line2) of TLE without checksums
+        tuple: (line1, line2) of TLE with checksums
     """
     import numpy as np
     from datetime import datetime, timezone
     import time
     
-    # Extract phase and angular velocity
-    s0 = phase_filter[0]  # current phase in radians
-    Omega = phase_filter[1]  # angular velocity in rad/s
+    # If no original TLE data provided, import from constants
+    if original_tle_data is None:
+        from constants import satellite_name, line1, line2
+        from tle_processing import parse_tle
+        original_tle_data = parse_tle([satellite_name, line1, line2])
     
-    # Constants for mock satellite
-    Rsim = 6900.0  # Representative LEO radius in km (ISS-like)
+    # Constants for calculations
     k_hat = np.array([0, 0, 1])  # z-axis unit vector (Earth's rotation axis)
     
-    # Calculate orbital elements from plane normal n_hat
-    # Inclination: i = arccos(n_hat · k)
+    # Calculate NEW inclination from tracking data
     inclination_rad = np.arccos(np.clip(np.dot(n_hat, k_hat), -1.0, 1.0))
     inclination_deg = np.degrees(inclination_rad)
     
-    # Line of nodes vector: N = k × n_hat
-    N = np.cross(k_hat, n_hat)
-    N_mag = np.linalg.norm(N)
+    # Use ALL original TLE values except inclination
+    satellite_number = original_tle_data['satnum']
+    classification = original_tle_data['classification']
+    intl_designator = original_tle_data['intl_designator']
     
-    if N_mag > 1e-10:  # Not polar orbit
-        N = N / N_mag
-        # RAAN: Ω_RAAN = atan2(Ny, Nx) 
-        raan_rad = np.arctan2(N[1], N[0])
-        raan_deg = np.degrees(raan_rad) % 360.0
-    else:  # Polar orbit case
-        raan_deg = 0.0
+    # Preserve original epoch
+    epoch_year_2digit = original_tle_data['epoch_year'] % 100
+    epoch_day = original_tle_data['epoch_day']
     
-    # Orbital elements (for circular orbit)
-    eccentricity = 0.0  # Circular by construction
-    arg_perigee_deg = 0.0  # Argument of perigee = 0
+    # Preserve original orbital dynamics
+    mean_motion_dot = original_tle_data['mean_motion_dot']
+    mean_motion_ddot = original_tle_data['mean_motion_ddot']
+    bstar = original_tle_data['bstar']
+    ephemeris_type = original_tle_data['ephemeris_type']
+    element_set_number = original_tle_data['element_set_number']
     
-    # Mean anomaly at epoch: M0 = wrap[0,2π)(s0)
-    mean_anomaly_deg = np.degrees(s0 % (2*np.pi))
+    # Preserve original orbital elements (except inclination)
+    raan_deg = original_tle_data['raan_deg']
+    eccentricity = original_tle_data['eccentricity']
+    arg_perigee_deg = original_tle_data['arg_perigee_deg'] 
+    mean_anomaly_deg = original_tle_data['mean_anomaly_deg']
+    mean_motion_rev_per_day = original_tle_data['mean_motion_rev_per_day']
+    revolution_number = original_tle_data['rev_number_at_epoch']
     
-    # Mean motion: n = (86400/2π)Ω (rev/day)
-    mean_motion_rev_per_day = (86400.0 / (2*np.pi)) * abs(Omega)
+    # Helper function to format scientific notation for TLE
+    def format_scientific_tle(value):
+        """Convert float to TLE's implied scientific notation format"""
+        if abs(value) < 1e-10:
+            return " 00000-0"
+        
+        # Convert to scientific notation
+        if value >= 0:
+            sign = "+"
+        else:
+            sign = "-"
+            value = abs(value)
+        
+        # Find exponent
+        if value == 0:
+            return " 00000-0"
+        
+        exponent = int(np.floor(np.log10(value)))
+        mantissa = value / (10 ** exponent)
+        
+        # Format mantissa (remove decimal point, take first 5 digits)
+        mantissa_str = f"{mantissa:.5f}".replace(".", "")[:5]
+        
+        # Handle negative exponent
+        if exponent < 0:
+            exp_sign = "-"
+            exp_val = abs(exponent)
+        else:
+            exp_sign = "+"
+            exp_val = exponent
+        
+        return f" {mantissa_str}{exp_sign}{exp_val}"
     
-    # Epoch time (use first measurement time or current time)
-    if len(first_scan_times) > 0:
-        epoch_time = first_scan_times[0]
-    else:
-        epoch_time = time.time()
+    # Format the scientific notation values
+    mean_motion_ddot_str = format_scientific_tle(mean_motion_ddot)
+    bstar_str = format_scientific_tle(bstar)
     
-    epoch_dt = datetime.fromtimestamp(epoch_time, tz=timezone.utc)
+    # Helper function to calculate TLE checksum
+    def calculate_checksum(line):
+        """Calculate TLE checksum for a line"""
+        total = 0
+        for char in line:
+            if char.isdigit():
+                total += int(char)
+            elif char == "-":
+                total += 1
+        return total % 10
     
-    # Convert to TLE epoch format (YY + day of year with fraction)
-    year = epoch_dt.year
-    year_2digit = year % 100
-    day_of_year = epoch_dt.timetuple().tm_yday
-    hour_fraction = (epoch_dt.hour + epoch_dt.minute/60.0 + 
-                    epoch_dt.second/3600.0 + epoch_dt.microsecond/3600000000.0) / 24.0
-    epoch_day = day_of_year + hour_fraction
-    
-    # TLE parameters
-    satellite_number = 99999  # Dummy satellite number
-    classification = "U"  # Unclassified
-    intl_designator = "25001A"  # Dummy international designator  
-    mean_motion_dot = 0.0  # First derivative of mean motion
-    mean_motion_ddot_exp = " 00000-0"  # Second derivative in implied scientific notation
-    bstar_exp = " 00000-0"  # Drag coefficient in implied scientific notation
-    ephemeris_type = 0
-    element_set_number = 1
-    revolution_number = 1
-    
-    # Format TLE Line 1 (columns as per TLE specification)
-    line1 = (
+    # Format TLE Line 1 (without checksum first)
+    line1_no_checksum = (
         f"1 {satellite_number:5d}{classification} "
         f"{intl_designator:8s} "
-        f"{year_2digit:02d}{epoch_day:012.8f} "
+        f"{epoch_year_2digit:02d}{epoch_day:012.8f} "
         f"{mean_motion_dot:10.8f} "
-        f"{mean_motion_ddot_exp} "
-        f"{bstar_exp} "
+        f"{mean_motion_ddot_str} "
+        f"{bstar_str} "
         f"{ephemeris_type:1d} "
         f"{element_set_number:4d}"
     )
     
-    # Format TLE Line 2 (columns as per TLE specification)
-    # Convert eccentricity to integer format (multiply by 10^7, no decimal point)
-    ecc_int = int(eccentricity * 10000000)
+    # Calculate and append checksum for line 1
+    checksum1 = calculate_checksum(line1_no_checksum)
+    line1 = line1_no_checksum + str(checksum1)
     
-    line2 = (
+    # Format TLE Line 2 (without checksum first)
+    # Convert eccentricity to integer format (multiply by 10^7, no decimal point)
+    ecc_int = int(round(eccentricity * 10000000))
+    
+    line2_no_checksum = (
         f"2 {satellite_number:5d} "
-        f"{inclination_deg:8.4f} "
+        f"{inclination_deg:8.4f} "  # THIS IS THE ONLY CHANGED VALUE
         f"{raan_deg:8.4f} "
         f"{ecc_int:07d} "
         f"{arg_perigee_deg:8.4f} "
@@ -105,11 +134,16 @@ def generate_mock_tle(cos_base, sin_base, n_hat, phase_filter, first_scan_times)
         f"{revolution_number:5d}"
     )
     
-    print(f"Generated mock TLE:")
-    print(f"Inclination: {inclination_deg:.4f}°")
-    print(f"RAAN: {raan_deg:.4f}°") 
+    # Calculate and append checksum for line 2
+    checksum2 = calculate_checksum(line2_no_checksum)
+    line2 = line2_no_checksum + str(checksum2)
+    
+    print(f"Generated updated TLE (preserving original except inclination):")
+    print(f"Original inclination: {original_tle_data['inclination_deg']:.4f}°")
+    print(f"Calculated inclination: {inclination_deg:.4f}°")
+    print(f"Satellite: {original_tle_data['name'] if 'name' in original_tle_data else 'Unknown'}")
+    print(f"NORAD ID: {satellite_number}")
+    print(f"Epoch: {original_tle_data['epoch_year']}-{epoch_day:.8f}")
     print(f"Mean Motion: {mean_motion_rev_per_day:.8f} rev/day")
-    print(f"Mean Anomaly: {mean_anomaly_deg:.4f}°")
-    print(f"Epoch: {epoch_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC")
     
     return line1, line2

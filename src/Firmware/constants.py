@@ -33,7 +33,7 @@ DEFAULT_CALIBRATION_DISTANCE = 1000  # cm - adjust based on your environment
 SENSOR_MAX = 1000
 ANOMALY_MAX_RADIUS = 4.0 # max degree range in which to average points
 SWEEP_RANGE = 10
-ANOMALY_FACTOR = 0.7
+ANOMALY_FACTOR = 0.4
 TILT_EXPANSION_FACTOR = 0.5
 AZI_EXPANSION_FACTOR = 0.5
 MISS_UNCERTAINTY_GROWTH_RATE = 0.08
@@ -44,13 +44,13 @@ MISS_UNCERTAINTY_GROWTH_RATE = 0.08
 DT = 0.5
 
 # Phase-space filter parameters (tuned for phase dynamics)
-ALPHA_PHASE = 0.6   # Position correction gain
+ALPHA_PHASE = 0.45   # Position correction gain
 BETA_PHASE = 0.2  # Velocity correction gain
 
 # Test TLE
-satellite_name = "ISS (ZARYA)"
-line1 = "1 25544U 98067A   24225.51782528  .00016717  00000-0  30199-3 0  9992"
-line2 = "2 25544  20.0000  95.0936 0007310  1.0000  60.6990 15.50209251454141"
+satellite_name = "Star link 1010"
+line1 = "1 44716U 19074D   25232.33335648  .00163869  00000+0  13147-2 0  9992"
+line2 = "2 44716  30.0556 334.9223 0010420 301.5321  72.1533 15.699406763190588"
 
-AZIMUTH_AMOUNT = 7
+AZIMUTH_AMOUNT = 10
 TILT_AMOUNT = 0
