@@ -245,7 +245,8 @@ def main():
                 miss_counter = 0
                 anomaly_count = 0
                 coords_array = np.array([list(coord_tuple[0]) for coord_tuple in anomaly_averaged_coords])
-                plot_data.append(coords_array)
+                for coord in coords_array:
+                    plot_data.append(coord.tolist())
                 first_scan_pos = coords_array[:, :3]
                 first_scan_times = coords_array[:, 3:].flatten()
                 
@@ -371,7 +372,7 @@ def main():
                     
                     # Calculate search area bounds
                     start_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
-                    end_azimuth = np.degrees(azi_pred) + 0.1 * azimuth_range
+                    end_azimuth = np.degrees(azi_pred) + 0.15 * azimuth_range
                     start_elevation = np.degrees(tilt_pred) - elevation_range/2
                     end_elevation = np.degrees(tilt_pred) + elevation_range/2
 
@@ -401,7 +402,7 @@ def main():
                             
                             # Calculate search area bounds
                             start_azimuth = np.degrees(azi_pred) + 0.2* azimuth_range
-                            end_azimuth = np.degrees(azi_pred) + 0.1 * azimuth_range
+                            end_azimuth = np.degrees(azi_pred) + 0.15 * azimuth_range
                             start_elevation = np.degrees(tilt_pred) - elevation_range/2
                             end_elevation = np.degrees(tilt_pred) + elevation_range/2
                             
@@ -430,6 +431,7 @@ def main():
                                 az_deg = float(anomaly_measured[1]) 
                                 el_deg = float(anomaly_measured[2])
                                 raw_ts = float(anomaly_measured[3]) if len(anomaly_measured) > 3 else time.time()
+                                plot_data.append([distance_m, az_deg, el_deg, raw_ts])
                             else:
                                 print(f"Warning: Invalid anomaly_measured format: {anomaly_measured}")
                                 continue
@@ -506,10 +508,6 @@ def main():
                         print(f"  Phase updated: {np.degrees(phase_updated):.1f}°")
                         print(f"  Rate updated: {np.degrees(phase_rate_updated):.3f} deg/s")
                         
-                        # Store tracking data for later analysis
-                        plot_data.append([anomaly_measured[0], anomaly_measured[1], anomaly_measured[2], anomaly_measured[3]])
-
-                        
                         # Optional: Check for convergence or orbit completion
                         if len(phase_history) > 10:
                             phase_span = phase_history[-1] - phase_history[0]
@@ -577,7 +575,7 @@ def main():
                     except Exception as e:
                         print(f"✗ Error generating mock TLE: {e}")
                 print(current_azimuth,tracking_iteration)
-                reset_stepper_pos(stepper_steps)
+                # reset_stepper_pos(stepper_steps)
                 current_azimuth, current_elevation, stepper_steps = move_to_polar_position(pi, tle_data["arg_perigee_deg"], 10 , stepper_steps)
                 scan_tilt = current_elevation
                 anomaly_count = 0   
